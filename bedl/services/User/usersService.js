@@ -1,6 +1,6 @@
 
 const bcrypt = require("bcryptjs");
-const UserModel = require("../../models/user/userModel");
+const UserModel = require("../../models/User/userModel");
 const dto = require("../../dto/User/userUpdateDto");
 const dtocreate = require("../../dto/User/userCreateDto");
 
