@@ -1,2 +1,6 @@
+bedl/node_modules/
+bedl/.env
+bedl/uploads/
+bedl/temp/
 node_modules/
 .env
