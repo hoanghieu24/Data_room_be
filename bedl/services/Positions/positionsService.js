@@ -1,5 +1,5 @@
 const bcrypt = require("bcryptjs");
-const PositionsModel = require("../../models/Positions/positionsModel");
+const PositionsModel = require("../../models/positions/positionsModel");
 
 class PositionsService {
     static async getAllPositions() {
