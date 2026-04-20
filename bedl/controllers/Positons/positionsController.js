@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-const Positions = require("../../services/Positions/positionsService");
+const Positions = require("../../services/positions/positionsService");
 const PositionCreateDTO = require("../../dto/positions/positionCreateDto");
 const PositionUpdateDTO = require("../../dto/positions/positionUpdateDto");
 
