@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const CategoryController = require("../../controllers/Category/CategoryController");
+const CategoryController = require("../../controllers/category/CategoryController");
 
 // ========== CATEGORY TYPE ROUTES ==========
 
