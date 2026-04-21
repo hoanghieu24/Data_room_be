@@ -6,10 +6,10 @@ const path = require("path");
 
 const authRoutes = require("./routes/Auth/auth");
 const userRoutes = require("./routes/User/users");
-const customer = require("./routes/Customer/customer");
-const role = require("./routes/Role/role");
+const customerRoutes = require("./routes/Customer/customer");
+const roleRoutes = require("./routes/Role/role");
 const positionsRoutes = require("./routes/Positions/positions");
-const StaffManager = require("./routes/StaffManager/staffManager");
+const staffManagerRoutes = require("./routes/StaffManager/staffManager");
 const departmentRoutes = require("./routes/Department/department");
 const categoryRoutes = require("./routes/categoryRoutes/categoryRoutes");
 const documentRoutes = require("./routes/dataroomRoutes/Document");
@@ -35,21 +35,28 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.originalUrl}`);
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
   next();
+});
+
+app.get("/", (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: "Server OK"
+  });
 });
 
 app.use("/api/test", testRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/customer", customer);
+app.use("/api/customer", customerRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/role", role);
+app.use("/api/role", roleRoutes);
 app.use("/api/positions", positionsRoutes);
-app.use("/api/staffmanager", StaffManager);
+app.use("/api/staffmanager", staffManagerRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/documents", documentRoutes);
@@ -74,11 +81,18 @@ if (!fs.existsSync(tempDir)) {
   fs.mkdirSync(tempDir, { recursive: true });
 }
 
+app.use((req, res) => {
+  return res.status(404).json({
+    success: false,
+    message: "Route not found"
+  });
+});
+
 app.use((err, req, res, next) => {
   console.error("Server error:", err);
-  res.status(500).json({
-    message: "Lỗi server",
-    error: err.message
+  return res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Internal Server Error"
   });
 });
 
