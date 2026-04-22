@@ -30,7 +30,7 @@ const corsOptions = {
     "https://data-room-chi.vercel.app"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-document-password"],
   credentials: true
 };
 
