@@ -187,8 +187,7 @@ class UserModel {
     return result.affectedRows > 0;
 }
 
-        return result.affectedRows > 0;
-    }
+
 
     static async findAll() {
         const [rows] = await db.query(
