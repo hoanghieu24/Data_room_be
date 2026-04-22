@@ -4,7 +4,7 @@ class UserUpdateDTO {
         this.phone = data.phone ?? null;
         this.avatar_url = data.avatar_url ?? null;
         this.department_id = data.department_id ?? null;
-        this.status = data.status;
+        this.is_active = data.is_active;
     }
 }
 
