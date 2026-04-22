@@ -9,11 +9,11 @@ class UserModel {
             `
             SELECT 
                 u.id, u.username, u.password_hash, u.email,
-                u.status, r.code AS role_code
+                u.is_active, r.code AS role_code
             FROM users u
             JOIN user_role ur ON ur.user_id = u.id
             JOIN roles r ON r.id = ur.role_id
-            WHERE u.username = ? AND u.status = 'ACTIVE'
+            WHERE u.username = ? AND u.is_active = '1'
             `,
             [username]
         );
