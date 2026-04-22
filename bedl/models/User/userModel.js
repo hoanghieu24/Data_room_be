@@ -162,28 +162,30 @@ class UserModel {
 
 
 
-    static async updateUser(id, dto) {
-        const [result] = await db.query(
-            `
+   static async updateUser(id, dto) {
+    const [result] = await db.query(
+        `
         UPDATE users
         SET
             full_name = ?,
             phone = ?,
             avatar_url = ?,
             department_id = ?,
-            status = ?
+            is_active = ?
         WHERE id = ?
         `,
-            [
-                dto.full_name,
-                dto.phone,
-                dto.avatar_url,
-                dto.department_id,
-                dto.status,
-                id
+        [
+            dto.full_name,
+            dto.phone,
+            dto.avatar_url,
+            dto.department_id,
+            dto.is_active,
+            id
+        ]
+    );
 
-            ]
-        );
+    return result.affectedRows > 0;
+}
 
         return result.affectedRows > 0;
     }
