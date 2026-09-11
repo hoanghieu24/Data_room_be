@@ -61,6 +61,8 @@ export const DataRoomPage: React.FC = () => {
   const [moveItem, setMoveItem] = useState<{ item: any; type: 'folder' | 'file' } | null>(null);
   const [passwordFile, setPasswordFile] = useState<any | null>(null);
   const [isMobileFolderTreeOpen, setIsMobileFolderTreeOpen] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [droppedFiles, setDroppedFiles] = useState<File[] | null>(null);
 
   const fetchTree = async () => {
     try {
@@ -417,8 +419,50 @@ export const DataRoomPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Contents Area */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
+        {/* Contents Area — supports drag & drop to upload */}
+        <div
+          className={`flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 sm:space-y-6 relative transition-all ${
+            isDraggingOver ? 'bg-blue-50/60 ring-2 ring-inset ring-blue-400' : ''
+          }`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!isDraggingOver) setIsDraggingOver(true);
+          }}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            setIsDraggingOver(true);
+          }}
+          onDragLeave={(e) => {
+            // Only clear if leaving the content area entirely
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setIsDraggingOver(false);
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingOver(false);
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) {
+              setDroppedFiles(files);
+              setIsUploadOpen(true);
+            }
+          }}
+        >
+          {/* Drop overlay hint */}
+          {isDraggingOver && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
+              <div className="bg-blue-600/90 text-white rounded-2xl px-8 py-6 flex flex-col items-center gap-3 shadow-2xl backdrop-blur-sm">
+                <UploadCloud className="w-12 h-12 animate-bounce" />
+                <div className="font-bold text-lg">Thả file vào đây để tải lên</div>
+                <div className="text-sm text-blue-100 opacity-80">
+                  Vào thư mục: {folderData.breadcrumbs?.slice(-1)[0]?.name || 'Root'}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Subfolders Section */}
           {folderData.subfolders?.length > 0 && (
             <div>
@@ -547,9 +591,13 @@ export const DataRoomPage: React.FC = () => {
 
       <UploadModal
         isOpen={isUploadOpen}
-        onClose={() => setIsUploadOpen(false)}
+        onClose={() => {
+          setIsUploadOpen(false);
+          setDroppedFiles(null);
+        }}
         folderId={currentFolderId}
         onSuccess={fetchContents}
+        initialFiles={droppedFiles}
       />
 
       <FilePreviewModal

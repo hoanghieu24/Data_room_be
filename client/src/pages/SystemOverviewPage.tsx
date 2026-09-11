@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Folder,
@@ -24,6 +24,7 @@ import {
   Sparkles,
   HardDrive,
   CheckCircle2,
+  Move,
 } from 'lucide-react';
 import api from '../services/api';
 import { FilePreviewModal } from '../components/dataroom/FilePreviewModal';
@@ -57,7 +58,6 @@ export const SystemOverviewPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [zoomLevel, setZoomLevel] = useState(1);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [previewFile, setPreviewFile] = useState<any | null>(null);
 
@@ -65,6 +65,12 @@ export const SystemOverviewPage: React.FC = () => {
   const [rootFolder, setRootFolder] = useState<FolderItem | null>(null);
   const [unclassifiedFiles, setUnclassifiedFiles] = useState<FileItem[]>([]);
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
+
+  // 2D Pan + Zoom State
+  const [transform, setTransform] = useState({ x: 40, y: 40, scale: 1 });
+  const isPanning = useRef(false);
+  const panStart = useRef({ x: 0, y: 0 });
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   // Fetch real data from MySQL
   const fetchRealData = async () => {
@@ -86,6 +92,51 @@ export const SystemOverviewPage: React.FC = () => {
   useEffect(() => {
     fetchRealData();
   }, []);
+
+  // ── Pan handlers ──────────────────────────────────────────────────────────
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if ((e.target as HTMLElement).closest('[data-no-pan]')) return;
+      if (e.button === 0 || e.button === 1) {
+        isPanning.current = true;
+        panStart.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
+        e.preventDefault();
+      }
+    },
+    [transform]
+  );
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isPanning.current) return;
+    setTransform((prev) => ({
+      ...prev,
+      x: e.clientX - panStart.current.x,
+      y: e.clientY - panStart.current.y,
+    }));
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    isPanning.current = false;
+  }, []);
+
+  // ── Wheel zoom toward cursor ──────────────────────────────────────────────
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.08 : 0.08;
+    setTransform((prev) => {
+      const newScale = Math.min(3, Math.max(0.25, prev.scale + delta));
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return { ...prev, scale: newScale };
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const scaleRatio = newScale / prev.scale;
+      const newX = mouseX - scaleRatio * (mouseX - prev.x);
+      const newY = mouseY - scaleRatio * (mouseY - prev.y);
+      return { x: newX, y: newY, scale: newScale };
+    });
+  }, []);
+
+  const resetView = () => setTransform({ x: 40, y: 40, scale: 1 });
 
   const toggleFolder = (folderId: string | number) => {
     setCollapsedFolders((prev) => ({
@@ -288,31 +339,37 @@ export const SystemOverviewPage: React.FC = () => {
             </div>
 
             {/* Zoom Controls */}
-            <div className="flex items-center bg-slate-900/80 border border-cyan-900/60 rounded-lg p-0.5">
+            <div className="flex items-center bg-slate-900/80 border border-cyan-900/60 rounded-lg p-0.5" data-no-pan>
               <button
-                onClick={() => setZoomLevel((z) => Math.max(0.6, Number((z - 0.1).toFixed(1))))}
+                onClick={() => setTransform((p) => ({ ...p, scale: Math.max(0.25, Number((p.scale - 0.1).toFixed(2))) }))}
                 className="p-1 text-slate-300 hover:text-cyan-300 hover:bg-cyan-950/50 rounded transition-colors"
                 title="Thu nhỏ (-)"
               >
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
               <span className="text-[11px] font-mono px-2 text-cyan-300 font-semibold select-none">
-                {Math.round(zoomLevel * 100)}%
+                {Math.round(transform.scale * 100)}%
               </span>
               <button
-                onClick={() => setZoomLevel((z) => Math.min(1.4, Number((z + 0.1).toFixed(1))))}
+                onClick={() => setTransform((p) => ({ ...p, scale: Math.min(3, Number((p.scale + 0.1).toFixed(2))) }))}
                 className="p-1 text-slate-300 hover:text-cyan-300 hover:bg-cyan-950/50 rounded transition-colors"
                 title="Phóng to (+)"
               >
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
               <button
-                onClick={() => setZoomLevel(1)}
+                onClick={resetView}
                 className="p-1 text-slate-400 hover:text-cyan-300 hover:bg-cyan-950/50 rounded transition-colors border-l border-cyan-900/60"
-                title="Tỉ lệ gốc 100%"
+                title="Đặt lại view (100%)"
               >
                 <RotateCcw className="w-3 h-3" />
               </button>
+            </div>
+
+            {/* Pan hint */}
+            <div className="hidden sm:flex items-center gap-1 text-[10px] text-slate-500 border border-cyan-900/40 rounded-lg px-2 py-1">
+              <Move className="w-3 h-3 text-cyan-700" />
+              <span>Kéo nền · Cuộn để zoom</span>
             </div>
 
             {/* Fullscreen Button */}
@@ -337,8 +394,17 @@ export const SystemOverviewPage: React.FC = () => {
         </div>
       </header>
 
-      {/* 2. MAIN PANORAMIC CANVAS */}
-      <main className="flex-1 overflow-auto relative p-8 bg-[radial-gradient(#162447_1px,transparent_1px)] [background-size:24px_24px]">
+      {/* 2. MAIN PANORAMIC CANVAS — 2D Pan + Zoom */}
+      <main
+        ref={canvasRef}
+        className="flex-1 overflow-hidden relative bg-[radial-gradient(#162447_1px,transparent_1px)] [background-size:24px_24px] cursor-grab active:cursor-grabbing"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+        style={{ userSelect: 'none', touchAction: 'none' }}
+      >
         {loading && !rootFolder ? (
           <div className="flex flex-col items-center justify-center h-96 gap-3">
             <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
@@ -346,10 +412,10 @@ export const SystemOverviewPage: React.FC = () => {
           </div>
         ) : (
           <div
-            className="transition-transform duration-200 origin-top-left inline-block min-w-full"
-            style={{ transform: `scale(${zoomLevel})` }}
+            className="absolute top-0 left-0 origin-top-left"
+            style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, willChange: 'transform' }}
           >
-            <div className="flex items-start gap-12 min-w-[1200px] py-4">
+            <div className="flex items-start gap-12 p-4">
               {/* === ROOT NODE (DATA ROOM) === */}
               <div className="sticky left-0 z-20 shrink-0">
                 <div className="w-64 p-5 rounded-2xl bg-gradient-to-br from-[#0F1E36] to-[#0A1428] border-2 border-cyan-500 shadow-xl shadow-cyan-950/80">

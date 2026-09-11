@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, UploadCloud, FileCheck, Lock, Eye, EyeOff } from 'lucide-react';
 import api from '../../services/api';
 import { useToast } from '../../context/ToastContext';
@@ -8,6 +8,7 @@ interface UploadModalProps {
   onClose: () => void;
   folderId: string | null;
   onSuccess: () => void;
+  initialFiles?: File[] | null;
 }
 
 export const UploadModal: React.FC<UploadModalProps> = ({
@@ -15,6 +16,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onClose,
   folderId,
   onSuccess,
+  initialFiles,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [useChunked, setUseChunked] = useState(false);
@@ -23,9 +25,30 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [enablePassword, setEnablePassword] = useState(false);
   const [filePassword, setFilePassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [dropHighlight, setDropHighlight] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  // When opened with pre-dropped files, auto-select the first one
+  useEffect(() => {
+    if (isOpen && initialFiles && initialFiles.length > 0) {
+      const file = initialFiles[0];
+      setSelectedFile(file);
+      if (file.size > 50 * 1024 * 1024) setUseChunked(true);
+    }
+  }, [isOpen, initialFiles]);
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedFile(null);
+      setEnablePassword(false);
+      setFilePassword('');
+      setProgress(0);
+      setDropHighlight(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -33,12 +56,10 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
-      // Auto enable chunked upload for files > 50MB
-      if (file.size > 50 * 1024 * 1024) {
-        setUseChunked(true);
-      }
+      if (file.size > 50 * 1024 * 1024) setUseChunked(true);
     }
   };
+
 
   const uploadDirect = async (file: File) => {
     const formData = new FormData();
@@ -148,7 +169,22 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           {/* Drag & Drop Area */}
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl p-8 text-center cursor-pointer transition-colors bg-slate-50 hover:bg-blue-50/50"
+            onDragOver={(e) => { e.preventDefault(); setDropHighlight(true); }}
+            onDragLeave={() => setDropHighlight(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDropHighlight(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) {
+                setSelectedFile(file);
+                if (file.size > 50 * 1024 * 1024) setUseChunked(true);
+              }
+            }}
+            className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors ${
+              dropHighlight
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-slate-300 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/50'
+            }`}
           >
             <input
               type="file"
