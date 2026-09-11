@@ -245,6 +245,126 @@ export const SystemOverviewPage: React.FC = () => {
     return { folderCount, fileCount };
   }, [rootFolder, unclassifiedFiles]);
 
+  const scalePercent = Math.round(transform.scale * 100);
+
+  // Count all files recursively in a folder
+  const countAllFiles = (f: FolderItem): number => {
+    let count = f.files?.length || 0;
+    f.subfolders?.forEach((sub) => {
+      count += countAllFiles(sub);
+    });
+    return count;
+  };
+
+  // ── Recursive Folder Node ─────────────────────────────────────────────────
+  const FolderNode: React.FC<{ folder: FolderItem; depth?: number }> = ({ folder, depth = 0 }) => {
+    const isCollapsed = !!collapsedFolders[String(folder.id)];
+    const directFiles = folder.files?.length || 0;
+    const subCount = folder.subfolders?.length || 0;
+    const totalNestedFiles = countAllFiles(folder);
+    const hasContent = directFiles + subCount > 0;
+    const indentColor = depth === 0 ? 'border-cyan-600/50' : depth === 1 ? 'border-indigo-500/50' : 'border-purple-500/40';
+
+    return (
+      <div className={`relative flex items-start gap-6 ${depth > 0 ? 'ml-8' : ''}`}>
+        {/* Connector line */}
+        <div className={`absolute -left-${depth > 0 ? '6' : '8'} top-6 w-${depth > 0 ? '6' : '8'} h-0.5 bg-cyan-400/80`}
+          style={{ left: depth > 0 ? '-24px' : '-32px', width: depth > 0 ? '24px' : '32px' }}
+        />
+
+        {/* Folder Card */}
+        <div
+          className={`w-64 p-3.5 rounded-2xl bg-[#0D1B36] border ${indentColor} hover:border-cyan-400 shadow-lg transition-all shrink-0`}
+          data-no-pan
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className={`p-2 rounded-xl ${depth === 0 ? 'bg-blue-500/20 text-cyan-400 border border-blue-500/40' : 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/40'} shrink-0`}>
+                <Folder className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-bold text-sm text-white truncate" title={folder.name}>{folder.name}</div>
+                <div className="text-[10px] text-cyan-300/80 font-medium">
+                  {subCount > 0
+                    ? directFiles > 0
+                      ? `${directFiles} file (${totalNestedFiles} tổng) · ${subCount} thư mục con`
+                      : `${totalNestedFiles} file trong ${subCount} thư mục con`
+                    : `${directFiles} tài liệu`}
+                </div>
+              </div>
+            </div>
+            {hasContent && (
+              <button
+                onClick={() => toggleFolder(folder.id)}
+                className="p-1 text-cyan-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                title={isCollapsed ? 'Mở rộng' : 'Thu gọn'}
+              >
+                {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
+          {folder.description && (
+            <p className="mt-1.5 text-[10px] text-slate-400 line-clamp-1">{folder.description}</p>
+          )}
+        </div>
+
+        {/* Files + nested subfolders */}
+        {!isCollapsed && (
+          hasContent ? (
+          <div className="flex-1 space-y-4 pt-1" data-no-pan>
+            {/* Direct files */}
+            {folder.files && folder.files.length > 0 && (
+              <div className="flex flex-wrap gap-3">
+                {folder.files.map((file) => {
+                  const isMatch = !searchQuery ||
+                    file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (file.fileName && file.fileName.toLowerCase().includes(searchQuery.toLowerCase()));
+                  if (searchQuery && !isMatch) return null;
+                  const iconInfo = getFileIcon(file.extension, file.type);
+                  return (
+                    <div
+                      key={file.id}
+                      onClick={() => setPreviewFile(file)}
+                      className="group relative flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#0b162c] border border-cyan-800/50 hover:border-cyan-400 hover:bg-[#122347] transition-all cursor-pointer shadow-md w-64"
+                    >
+                      <div className={`p-1.5 rounded-lg border ${iconInfo.bg} shrink-0`}>{iconInfo.icon}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-slate-100 group-hover:text-cyan-300 truncate" title={file.name}>{file.name}</div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                          <span className="font-mono">{file.size}</span>
+                          {file.isEncrypted && (
+                            <span className="inline-flex items-center gap-0.5 text-amber-400">
+                              <Lock className="w-2.5 h-2.5" /> Mã hóa
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="p-1 rounded-md text-slate-400 group-hover:text-cyan-400 shrink-0">
+                        <Eye className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Nested subfolders — rendered recursively */}
+            {folder.subfolders && folder.subfolders.length > 0 && (
+              <div className="space-y-4 relative before:absolute before:-left-4 before:top-4 before:bottom-4 before:w-0.5 before:bg-indigo-500/40">
+                {folder.subfolders.map((sub) => {
+                  if (searchQuery && !doesFolderMatch(sub, searchQuery)) return null;
+                  return <FolderNode key={sub.id} folder={sub} depth={depth + 1} />;
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-xs text-slate-500 italic py-2">(Thư mục trống)</div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div
       className={`min-h-screen bg-[#070D1B] text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-white ${
@@ -454,111 +574,11 @@ export const SystemOverviewPage: React.FC = () => {
 
               {/* === SUBFOLDERS & FILES (TECH TREE) === */}
               <div className="flex-1 space-y-8 relative before:absolute before:-left-8 before:top-8 before:bottom-8 before:w-0.5 before:bg-gradient-to-b before:from-cyan-400 before:via-blue-500 before:to-indigo-500">
-                {/* 1. Branch: Real Subfolders */}
+                {/* 1. Branch: Real Subfolders — uses recursive FolderNode */}
                 {rootFolder?.subfolders && rootFolder.subfolders.length > 0 ? (
                   rootFolder.subfolders.map((folder) => {
-                    const isCollapsed = !!collapsedFolders[String(folder.id)];
-                    const matchesSearch = doesFolderMatch(folder, searchQuery);
-                    if (searchQuery && !matchesSearch) return null;
-
-                    return (
-                      <div key={folder.id} className="relative flex items-start gap-8">
-                        {/* Horizontal connector line */}
-                        <div className="absolute -left-8 top-6 w-8 h-0.5 bg-cyan-400/80"></div>
-
-                        {/* Folder Node Card */}
-                        <div className="w-72 p-4 rounded-2xl bg-[#0D1B36] border border-cyan-600/50 hover:border-cyan-400 shadow-lg shadow-cyan-950/40 transition-all shrink-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="p-2.5 rounded-xl bg-blue-500/20 text-cyan-400 border border-blue-500/40 shrink-0">
-                                <Folder className="w-5 h-5" />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="font-bold text-sm text-white truncate" title={folder.name}>
-                                  {folder.name}
-                                </div>
-                                <div className="text-[11px] text-cyan-300 font-medium">
-                                  {folder.files?.length || 0} tài liệu
-                                </div>
-                              </div>
-                            </div>
-
-                            {(folder.files?.length || folder.subfolders?.length) ? (
-                              <button
-                                onClick={() => toggleFolder(folder.id)}
-                                className="p-1.5 text-cyan-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-                                title={isCollapsed ? 'Mở rộng' : 'Thu gọn'}
-                              >
-                                {isCollapsed ? (
-                                  <ChevronRight className="w-4 h-4" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4" />
-                                )}
-                              </button>
-                            ) : null}
-                          </div>
-
-                          {folder.description && (
-                            <p className="mt-2 text-[11px] text-slate-400 line-clamp-2">
-                              {folder.description}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Folder Files & Nested Subfolders */}
-                        {!isCollapsed && (
-                          <div className="flex-1 flex flex-wrap gap-3 pt-1">
-                            {folder.files && folder.files.length > 0 ? (
-                              folder.files.map((file) => {
-                                const isFileMatch =
-                                  !searchQuery ||
-                                  file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                  (file.fileName && file.fileName.toLowerCase().includes(searchQuery.toLowerCase()));
-
-                                if (searchQuery && !isFileMatch) return null;
-
-                                const iconInfo = getFileIcon(file.extension, file.type);
-
-                                return (
-                                  <div
-                                    key={file.id}
-                                    onClick={() => setPreviewFile(file)}
-                                    className="group relative flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#0b162c] border border-cyan-800/50 hover:border-cyan-400 hover:bg-[#122347] transition-all cursor-pointer shadow-md hover:shadow-cyan-900/30 w-72"
-                                  >
-                                    <div className={`p-1.5 rounded-lg border ${iconInfo.bg} shrink-0`}>
-                                      {iconInfo.icon}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div
-                                        className="text-xs font-semibold text-slate-100 group-hover:text-cyan-300 truncate"
-                                        title={file.name}
-                                      >
-                                        {file.name}
-                                      </div>
-                                      <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-                                        <span className="font-mono">{file.size}</span>
-                                        {file.isEncrypted && (
-                                          <span className="inline-flex items-center gap-0.5 text-amber-400">
-                                            <Lock className="w-2.5 h-2.5" /> Mã hóa
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="p-1 rounded-md text-slate-400 group-hover:text-cyan-400 hover:bg-cyan-950/60 shrink-0">
-                                      <Eye className="w-3.5 h-3.5" />
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <div className="text-xs text-slate-500 italic py-2">
-                                (Chưa có tài liệu trong thư mục này)
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
+                    if (searchQuery && !doesFolderMatch(folder, searchQuery)) return null;
+                    return <FolderNode key={folder.id} folder={folder} depth={0} />;
                   })
                 ) : (
                   <div className="text-xs text-slate-400 italic">Chưa có thư mục con nào.</div>

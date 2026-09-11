@@ -16,6 +16,8 @@ import {
   Lock,
   Network,
   X,
+  PanelLeft,
+  PanelLeftClose,
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -63,6 +65,9 @@ export const DataRoomPage: React.FC = () => {
   const [isMobileFolderTreeOpen, setIsMobileFolderTreeOpen] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [droppedFiles, setDroppedFiles] = useState<File[] | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [dragItem, setDragItem] = useState<{ id: string; type: 'folder' | 'file'; name: string } | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
 
   const fetchTree = async () => {
     try {
@@ -109,6 +114,17 @@ export const DataRoomPage: React.FC = () => {
   useEffect(() => {
     fetchContents();
   }, [currentFolderId, searchQuery, sortBy, sortOrder]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dragItem) {
+        setDragItem(null);
+        setDragOverFolderId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dragItem]);
 
   const handleSelectFolder = (fId: string | null) => {
     setIsMobileFolderTreeOpen(false);
@@ -212,6 +228,35 @@ export const DataRoomPage: React.FC = () => {
     }
   };
 
+  const handleDropMove = async (targetFolderId: string | null) => {
+    if (!dragItem) return;
+    if (dragItem.type === 'folder' && String(dragItem.id) === String(targetFolderId)) return;
+
+    try {
+      if (dragItem.type === 'folder') {
+        const res = await api.put('/folders/' + dragItem.id + '/move', { targetParentId: targetFolderId });
+        if (res.data.success) {
+          toast('success', 'Đã di chuyển thư mục "' + dragItem.name + '"');
+          fetchContents();
+          fetchTree();
+        }
+      } else {
+        const res = await api.put('/files/' + dragItem.id + '/move', { folderId: targetFolderId });
+        if (res.data.success) {
+          toast('success', 'Đã di chuyển tệp "' + dragItem.name + '"');
+          fetchContents();
+        }
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Di chuyển thất bại');
+    } finally {
+      setDragItem(null);
+      setDragOverFolderId(null);
+    }
+  };
+
+
+
   const perms = folderData.currentFolderPermissions || {};
 
   return (
@@ -254,25 +299,40 @@ export const DataRoomPage: React.FC = () => {
                 tree={tree}
                 selectedFolderId={currentFolderId}
                 onSelectFolder={handleSelectFolder}
+                dragItem={dragItem}
+                onDropItem={(id) => handleDropMove(id)}
               />
             </div>
           </div>
         </div>
       )}
 
-      {/* Left Sidebar: Folder Tree (Desktop) */}
-      <div className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col h-full overflow-hidden flex-shrink-0">
-        <div className="p-3.5 border-b border-slate-100 flex items-center justify-between">
-          <span className="font-bold text-xs text-slate-800 uppercase tracking-wider">
+      {/* Left Sidebar: Folder Tree (Desktop) — collapsible */}
+      <div
+        className={`hidden lg:flex flex-col h-full overflow-hidden flex-shrink-0 bg-white border-r border-slate-200 transition-all duration-200 ${
+          isSidebarCollapsed ? 'w-0 border-r-0' : 'w-64'
+        }`}
+      >
+        <div className="p-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+          <span className="font-bold text-xs text-slate-800 uppercase tracking-wider truncate">
             Cây Thư Mục Data Room
           </span>
-          <button
-            onClick={() => setIsCreateFolderOpen(true)}
-            className="p-1 hover:bg-slate-100 text-blue-600 rounded-lg transition-colors cursor-pointer"
-            title="Tạo thư mục mới"
-          >
-            <FolderPlus className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsCreateFolderOpen(true)}
+              className="p-1 hover:bg-slate-100 text-blue-600 rounded-lg transition-colors cursor-pointer"
+              title="Tạo thư mục mới"
+            >
+              <FolderPlus className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setIsSidebarCollapsed(true)}
+              className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
+              title="Đóng tab trái (Thu gọn)"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
@@ -280,6 +340,8 @@ export const DataRoomPage: React.FC = () => {
             tree={tree}
             selectedFolderId={currentFolderId}
             onSelectFolder={handleSelectFolder}
+            dragItem={dragItem}
+            onDropItem={(id) => handleDropMove(id)}
           />
         </div>
       </div>
@@ -288,12 +350,33 @@ export const DataRoomPage: React.FC = () => {
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 min-w-0">
         {/* Top Control Toolbar */}
         <div className="p-3 sm:p-4 bg-white border-b border-slate-200 flex flex-col gap-3 shadow-xs">
-          {/* Row 1: Breadcrumbs + Folder Tree Mobile button */}
+          {/* Row 1: Breadcrumbs + Folder Tree Mobile button + Desktop Tab Close/Open Button */}
           <div className="flex items-center justify-between gap-2">
-            <div className="flex-1 overflow-x-auto min-w-0">
+            <div className="flex items-center gap-2 flex-1 overflow-x-auto min-w-0">
+              {/* Desktop toggle button for left tree */}
+              <button
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer shrink-0"
+                title={isSidebarCollapsed ? 'Mở cây thư mục (tab trái)' : 'Đóng cây thư mục (tab trái)'}
+              >
+                {isSidebarCollapsed ? (
+                  <>
+                    <PanelLeft className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Mở tab trái</span>
+                  </>
+                ) : (
+                  <>
+                    <PanelLeftClose className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Đóng tab trái</span>
+                  </>
+                )}
+              </button>
+
               <Breadcrumb
                 items={folderData.breadcrumbs || []}
                 onSelect={handleSelectFolder}
+                dragItem={dragItem}
+                onDropItem={(id) => handleDropMove(id)}
               />
             </div>
             <button
@@ -443,6 +526,12 @@ export const DataRoomPage: React.FC = () => {
             e.preventDefault();
             e.stopPropagation();
             setIsDraggingOver(false);
+            // If it's an internal drag-item (folder/file move), handle move to current folder
+            if (dragItem) {
+              handleDropMove(currentFolderId);
+              return;
+            }
+            // Otherwise treat as OS file drop → upload
             const files = Array.from(e.dataTransfer.files);
             if (files.length > 0) {
               setDroppedFiles(files);
@@ -474,7 +563,36 @@ export const DataRoomPage: React.FC = () => {
                 {folderData.subfolders.map((folder: any) => (
                   <div
                     key={folder.id}
-                    className="p-3 bg-white rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-center justify-between group"
+                    draggable
+                    onDragStart={(e) => {
+                      setDragItem({ id: folder.id, type: 'folder', name: folder.name });
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragEnd={() => { setDragItem(null); setDragOverFolderId(null); }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (dragItem && String(dragItem.id) !== String(folder.id)) {
+                        setDragOverFolderId(folder.id);
+                        e.dataTransfer.dropEffect = 'move';
+                      }
+                    }}
+                    onDragLeave={() => setDragOverFolderId(null)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (dragItem && String(dragItem.id) !== String(folder.id)) {
+                        handleDropMove(folder.id);
+                      }
+                      setDragOverFolderId(null);
+                    }}
+                    className={`p-3 bg-white rounded-xl border transition-all flex items-center justify-between group cursor-grab active:cursor-grabbing ${
+                      dragOverFolderId === folder.id
+                        ? 'border-blue-500 ring-2 ring-blue-300 bg-blue-50 shadow-md scale-[1.02]'
+                        : dragItem
+                        ? 'border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50/50'
+                        : 'border-slate-200 hover:border-blue-300 hover:shadow-sm'
+                    }`}
                   >
                     <div
                       onClick={() => handleSelectFolder(folder.id)}
@@ -493,7 +611,7 @@ export const DataRoomPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Folder actions dropdown */}
+                    {/* Folder actions */}
                     {perms.canEdit !== false && (
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
@@ -562,6 +680,11 @@ export const DataRoomPage: React.FC = () => {
                   onMove={(f) => setMoveItem({ item: f, type: 'file' })}
                   onDelete={handleDeleteFile}
                   onSetPassword={(f) => setPasswordFile(f)}
+                  onDragStartItem={(item) => setDragItem(item)}
+                  onDragEndItem={() => {
+                    setDragItem(null);
+                    setDragOverFolderId(null);
+                  }}
                 />
               </div>
             ) : (
@@ -572,6 +695,11 @@ export const DataRoomPage: React.FC = () => {
                 onShare={(f) => setShareItem({ item: f, type: 'file' })}
                 onVersions={(f) => setVersionsFile(f)}
                 onSetPassword={(f) => setPasswordFile(f)}
+                onDragStartItem={(item) => setDragItem(item)}
+                onDragEndItem={() => {
+                  setDragItem(null);
+                  setDragOverFolderId(null);
+                }}
               />
             )}
           </div>
@@ -643,6 +771,29 @@ export const DataRoomPage: React.FC = () => {
           onClose={() => setPasswordFile(null)}
           onSuccess={fetchContents}
         />
+      )}
+
+      {/* Floating Drag-and-Drop Helper */}
+      {dragItem && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-blue-500/50 backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-bottom duration-200">
+          <div className="p-1.5 bg-blue-500/20 text-blue-400 rounded-lg border border-blue-500/30">
+            <Move className="w-4 h-4 animate-pulse" />
+          </div>
+          <div className="text-xs">
+            <span className="text-slate-300">Đang kéo {dragItem.type === 'folder' ? 'thư mục' : 'tệp'}: </span>
+            <span className="font-bold text-white">"{dragItem.name}"</span>
+            <span className="text-blue-300 ml-2">→ Thả vào thư mục bất kỳ để gộp / chuyển</span>
+          </div>
+          <button
+            onClick={() => {
+              setDragItem(null);
+              setDragOverFolderId(null);
+            }}
+            className="ml-2 px-2 py-1 text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors cursor-pointer"
+          >
+            Hủy (Esc)
+          </button>
+        </div>
       )}
     </div>
   );

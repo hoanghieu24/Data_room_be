@@ -31,6 +31,8 @@ interface FileTableProps {
   onMove: (file: any) => void;
   onDelete: (file: any) => void;
   onSetPassword?: (file: any) => void;
+  onDragStartItem?: (item: { id: string; type: 'file'; name: string }) => void;
+  onDragEndItem?: () => void;
 }
 
 interface MenuState {
@@ -51,6 +53,8 @@ export const FileTable: React.FC<FileTableProps> = ({
   onMove,
   onDelete,
   onSetPassword,
+  onDragStartItem,
+  onDragEndItem,
 }) => {
   const { user } = useAuth();
   const [menuState, setMenuState] = useState<MenuState | null>(null);
@@ -150,7 +154,17 @@ export const FileTable: React.FC<FileTableProps> = ({
             const canManagePassword = isOwner || isAdmin;
 
             return (
-              <tr key={file.id} className="hover:bg-blue-50/30 transition-colors group">
+              <tr
+                key={file.id}
+                draggable
+                onDragStart={(e) => {
+                  onDragStartItem?.({ id: String(file.id), type: 'file', name: file.name });
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', JSON.stringify({ id: file.id, type: 'file', name: file.name }));
+                }}
+                onDragEnd={() => onDragEndItem?.()}
+                className="hover:bg-blue-50/30 transition-colors group cursor-grab active:cursor-grabbing"
+              >
                 <td className="py-3 px-3 sm:px-4">
                   <div className="flex items-center gap-2.5 sm:gap-3">
                     <div className="p-2 bg-slate-100 rounded-xl border border-slate-200/80 shrink-0 group-hover:bg-blue-50 group-hover:border-blue-200 transition-colors">

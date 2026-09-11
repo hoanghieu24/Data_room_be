@@ -15,26 +15,52 @@ interface FolderTreeProps {
   tree: TreeNode[];
   selectedFolderId: string | null;
   onSelectFolder: (folderId: string | null) => void;
+  dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
+  onDropItem?: (targetFolderId: string | null) => void;
 }
 
 const TreeItem: React.FC<{
   node: TreeNode;
   selectedFolderId: string | null;
   onSelectFolder: (folderId: string | null) => void;
-}> = ({ node, selectedFolderId, onSelectFolder }) => {
+  dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
+  onDropItem?: (targetFolderId: string | null) => void;
+}> = ({ node, selectedFolderId, onSelectFolder, dragItem, onDropItem }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const isSelected = selectedFolderId === node.id;
   const hasChildren = node.children && node.children.length > 0;
+
+  const canAcceptDrop = dragItem && (dragItem.type !== 'folder' || String(dragItem.id) !== String(node.id));
 
   return (
     <div className="select-none text-xs">
       <div
         className={`flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${
-          isSelected
+          isDragOver
+            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02]'
+            : isSelected
             ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200'
             : 'text-slate-700 hover:bg-slate-100'
         }`}
         onClick={() => onSelectFolder(node.id)}
+        onDragOver={(e) => {
+          if (canAcceptDrop) {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragOver(true);
+            e.dataTransfer.dropEffect = 'move';
+          }
+        }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(false);
+          if (canAcceptDrop) {
+            onDropItem?.(node.id);
+          }
+        }}
       >
         <button
           type="button"
@@ -74,6 +100,8 @@ const TreeItem: React.FC<{
               node={child}
               selectedFolderId={selectedFolderId}
               onSelectFolder={onSelectFolder}
+              dragItem={dragItem}
+              onDropItem={onDropItem}
             />
           ))}
         </div>
@@ -82,14 +110,41 @@ const TreeItem: React.FC<{
   );
 };
 
-export const FolderTree: React.FC<FolderTreeProps> = ({ tree, selectedFolderId, onSelectFolder }) => {
+export const FolderTree: React.FC<FolderTreeProps> = ({
+  tree,
+  selectedFolderId,
+  onSelectFolder,
+  dragItem,
+  onDropItem,
+}) => {
+  const [isRootDragOver, setIsRootDragOver] = useState(false);
+
   return (
     <div className="space-y-1">
       {/* Root item */}
       <div
         onClick={() => onSelectFolder(null)}
+        onDragOver={(e) => {
+          if (dragItem) {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsRootDragOver(true);
+            e.dataTransfer.dropEffect = 'move';
+          }
+        }}
+        onDragLeave={() => setIsRootDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsRootDragOver(false);
+          if (dragItem) {
+            onDropItem?.(null);
+          }
+        }}
         className={`flex items-center gap-2 py-1.5 px-2.5 rounded-lg cursor-pointer text-xs font-semibold transition-colors ${
-          selectedFolderId === null
+          isRootDragOver
+            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02]'
+            : selectedFolderId === null
             ? 'bg-blue-600 text-white shadow-sm'
             : 'text-slate-700 hover:bg-slate-100'
         }`}
@@ -105,9 +160,12 @@ export const FolderTree: React.FC<FolderTreeProps> = ({ tree, selectedFolderId, 
             node={node}
             selectedFolderId={selectedFolderId}
             onSelectFolder={onSelectFolder}
+            dragItem={dragItem}
+            onDropItem={onDropItem}
           />
         ))}
       </div>
     </div>
   );
 };
+

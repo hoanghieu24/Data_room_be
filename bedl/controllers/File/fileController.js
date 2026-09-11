@@ -548,12 +548,16 @@ class FileController {
     static async move(req, res) {
         try {
             const { id } = req.params;
-            const targetFolderId = req.body.targetFolderId || req.body.folderId;
-            if (!targetFolderId) {
-                return res.status(400).json({ success: false, message: 'Chưa chọn thư mục đích' });
+            let targetFolderId = req.body.targetFolderId !== undefined ? req.body.targetFolderId : req.body.folderId;
+
+            // If moving to root (null or undefined or 1), normalize to 1
+            if (targetFolderId === null || targetFolderId === undefined || targetFolderId === '' || targetFolderId === 'root' || targetFolderId === 1 || targetFolderId === '1') {
+                targetFolderId = 1;
+            } else {
+                targetFolderId = Number(targetFolderId);
             }
 
-            const updated = await DocumentModel.update(id, { folder_id: Number(targetFolderId) });
+            const updated = await DocumentModel.update(id, { folder_id: targetFolderId });
             return res.json({
                 success: true,
                 message: 'Di chuyển tài liệu thành công',

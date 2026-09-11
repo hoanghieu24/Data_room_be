@@ -20,6 +20,8 @@ interface FileGridProps {
   onShare: (file: any) => void;
   onVersions: (file: any) => void;
   onSetPassword?: (file: any) => void;
+  onDragStartItem?: (item: { id: string; type: 'file'; name: string }) => void;
+  onDragEndItem?: () => void;
 }
 
 export const FileGrid: React.FC<FileGridProps> = ({
@@ -29,6 +31,8 @@ export const FileGrid: React.FC<FileGridProps> = ({
   onShare,
   onVersions,
   onSetPassword,
+  onDragStartItem,
+  onDragEndItem,
 }) => {
   const { user } = useAuth();
   const getFileExt = (file: any) => {
@@ -61,7 +65,14 @@ export const FileGrid: React.FC<FileGridProps> = ({
         return (
           <div
             key={file.id}
-            className="group bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all flex flex-col overflow-hidden"
+            draggable
+            onDragStart={(e) => {
+              onDragStartItem?.({ id: String(file.id), type: 'file', name: file.name });
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', JSON.stringify({ id: file.id, type: 'file', name: file.name }));
+            }}
+            onDragEnd={() => onDragEndItem?.()}
+            className="group bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all flex flex-col overflow-hidden cursor-grab active:cursor-grabbing"
           >
             {/* Thumbnail / Header Area */}
             <div
