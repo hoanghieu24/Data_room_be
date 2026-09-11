@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET || "doi-thanh-mot-chuoi-dai-ngau-nhien-secret-key-2026";
 
 /**
  * =========================
@@ -30,7 +31,7 @@ const authenticate = (req, res, next) => {
 
         console.log("🎫 Token:", token.slice(0, 30) + "...");
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
         console.log("✅ DECODED TOKEN:", decoded);
 
         req.user = decoded;
@@ -98,7 +99,7 @@ const optionalAuthenticate = (req, res, next) => {
                 : null;
 
         if (token) {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const decoded = jwt.verify(token, JWT_SECRET);
             req.user = decoded;
         }
     } catch (error) {

@@ -73,8 +73,8 @@ class AuthService {
                 id: user.id,
                 role_code: user.role_code
             },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
+            process.env.JWT_SECRET || "doi-thanh-mot-chuoi-dai-ngau-nhien-secret-key-2026",
+            { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
         );
 
         return { token };
