@@ -301,6 +301,12 @@ export const DataRoomPage: React.FC = () => {
                 onSelectFolder={handleSelectFolder}
                 dragItem={dragItem}
                 onDropItem={(id) => handleDropMove(id)}
+                onDragStartItem={(item) => setDragItem(item)}
+                onDragEndItem={() => {
+                  setDragItem(null);
+                  setDragOverFolderId(null);
+                }}
+                onDeleteFolder={handleDeleteFolder}
               />
             </div>
           </div>
@@ -342,6 +348,12 @@ export const DataRoomPage: React.FC = () => {
             onSelectFolder={handleSelectFolder}
             dragItem={dragItem}
             onDropItem={(id) => handleDropMove(id)}
+            onDragStartItem={(item) => setDragItem(item)}
+            onDragEndItem={() => {
+              setDragItem(null);
+              setDragOverFolderId(null);
+            }}
+            onDeleteFolder={handleDeleteFolder}
           />
         </div>
       </div>
@@ -496,6 +508,24 @@ export const DataRoomPage: React.FC = () => {
                   <Shield className="w-4 h-4" />
                   <span className="hidden sm:inline">Phân quyền Folder</span>
                   <span className="sm:hidden">Phân quyền</span>
+                </button>
+              )}
+
+              {currentFolderId && perms.canDelete !== false && (
+                <button
+                  onClick={() => {
+                    const currentFolder = {
+                      id: currentFolderId,
+                      name: folderData.breadcrumbs?.slice(-1)[0]?.name || 'Thư mục này'
+                    };
+                    handleDeleteFolder(currentFolder);
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer shrink-0"
+                  title="Xóa thư mục này vào Thùng rác"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" />
+                  <span className="hidden sm:inline">Xóa thư mục</span>
+                  <span className="sm:hidden">Xóa</span>
                 </button>
               )}
             </div>
@@ -695,6 +725,7 @@ export const DataRoomPage: React.FC = () => {
                 onShare={(f) => setShareItem({ item: f, type: 'file' })}
                 onVersions={(f) => setVersionsFile(f)}
                 onSetPassword={(f) => setPasswordFile(f)}
+                onDelete={handleDeleteFile}
                 onDragStartItem={(item) => setDragItem(item)}
                 onDragEndItem={() => {
                   setDragItem(null);

@@ -10,6 +10,7 @@ import {
   Lock,
   History,
   KeyRound,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -20,6 +21,7 @@ interface FileGridProps {
   onShare: (file: any) => void;
   onVersions: (file: any) => void;
   onSetPassword?: (file: any) => void;
+  onDelete?: (file: any) => void;
   onDragStartItem?: (item: { id: string; type: 'file'; name: string }) => void;
   onDragEndItem?: () => void;
 }
@@ -31,6 +33,7 @@ export const FileGrid: React.FC<FileGridProps> = ({
   onShare,
   onVersions,
   onSetPassword,
+  onDelete,
   onDragStartItem,
   onDragEndItem,
 }) => {
@@ -169,6 +172,16 @@ export const FileGrid: React.FC<FileGridProps> = ({
                       title="Tải về"
                     >
                       <Download className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {perms.canDelete !== false && onDelete && (
+                    <button
+                      onClick={() => onDelete(file)}
+                      className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                      title="Xóa tài liệu vào Thùng rác"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>

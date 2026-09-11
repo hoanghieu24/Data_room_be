@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Folder, FolderOpen, ChevronRight, ChevronDown, Layers } from 'lucide-react';
+import { Folder, FolderOpen, ChevronRight, ChevronDown, Layers, Trash2, GripVertical } from 'lucide-react';
 
 export interface TreeNode {
   id: string;
@@ -17,6 +17,9 @@ interface FolderTreeProps {
   onSelectFolder: (folderId: string | null) => void;
   dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
   onDropItem?: (targetFolderId: string | null) => void;
+  onDragStartItem?: (item: { id: string; type: 'folder'; name: string }) => void;
+  onDragEndItem?: () => void;
+  onDeleteFolder?: (folder: any) => void;
 }
 
 const TreeItem: React.FC<{
@@ -25,7 +28,19 @@ const TreeItem: React.FC<{
   onSelectFolder: (folderId: string | null) => void;
   dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
   onDropItem?: (targetFolderId: string | null) => void;
-}> = ({ node, selectedFolderId, onSelectFolder, dragItem, onDropItem }) => {
+  onDragStartItem?: (item: { id: string; type: 'folder'; name: string }) => void;
+  onDragEndItem?: () => void;
+  onDeleteFolder?: (folder: any) => void;
+}> = ({
+  node,
+  selectedFolderId,
+  onSelectFolder,
+  dragItem,
+  onDropItem,
+  onDragStartItem,
+  onDragEndItem,
+  onDeleteFolder,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const isSelected = selectedFolderId === node.id;
@@ -36,7 +51,18 @@ const TreeItem: React.FC<{
   return (
     <div className="select-none text-xs">
       <div
-        className={`flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation();
+          onDragStartItem?.({ id: String(node.id), type: 'folder', name: node.name });
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', JSON.stringify({ id: node.id, type: 'folder', name: node.name }));
+        }}
+        onDragEnd={(e) => {
+          e.stopPropagation();
+          onDragEndItem?.();
+        }}
+        className={`group flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-grab active:cursor-grabbing transition-colors ${
           isDragOver
             ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02]'
             : isSelected
@@ -77,6 +103,8 @@ const TreeItem: React.FC<{
           )}
         </button>
 
+        <GripVertical className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 shrink-0 cursor-grab" />
+
         {isSelected || isOpen ? (
           <FolderOpen className="w-4 h-4 text-blue-500 flex-shrink-0" />
         ) : (
@@ -90,6 +118,21 @@ const TreeItem: React.FC<{
             {node.fileCount}
           </span>
         )}
+
+        {/* Nút xóa thư mục trực tiếp trên cây thư mục */}
+        {onDeleteFolder && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteFolder(node);
+            }}
+            className="p-1 opacity-0 group-hover:opacity-100 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded transition-all cursor-pointer shrink-0"
+            title={`Xóa thư mục "${node.name}"`}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {hasChildren && isOpen && (
@@ -102,6 +145,9 @@ const TreeItem: React.FC<{
               onSelectFolder={onSelectFolder}
               dragItem={dragItem}
               onDropItem={onDropItem}
+              onDragStartItem={onDragStartItem}
+              onDragEndItem={onDragEndItem}
+              onDeleteFolder={onDeleteFolder}
             />
           ))}
         </div>
@@ -116,6 +162,9 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   onSelectFolder,
   dragItem,
   onDropItem,
+  onDragStartItem,
+  onDragEndItem,
+  onDeleteFolder,
 }) => {
   const [isRootDragOver, setIsRootDragOver] = useState(false);
 
@@ -162,6 +211,9 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             onSelectFolder={onSelectFolder}
             dragItem={dragItem}
             onDropItem={onDropItem}
+            onDragStartItem={onDragStartItem}
+            onDragEndItem={onDragEndItem}
+            onDeleteFolder={onDeleteFolder}
           />
         ))}
       </div>

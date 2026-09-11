@@ -269,6 +269,17 @@ export const FileTable: React.FC<FileTableProps> = ({
                       </button>
                     )}
 
+                    {/* Nút xóa nhanh tài liệu */}
+                    {perms.canDelete !== false && (
+                      <button
+                        onClick={() => onDelete(file)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        title="Xóa tài liệu vào Thùng rác"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+
                     {/* Nút 3 chấm mở menu tùy chọn nổi (Portal) */}
                     <button
                       onClick={(e) => handleOpenMenu(e, file)}
