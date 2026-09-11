@@ -31,36 +31,114 @@ exports.register = async (req, res) => {
 // Đăng nhập người dùng
 exports.login = async (req, res) => {
     try {
-        const { username, password } = req.body;
-        if (!username) return res.status(400).json({ msg: "Thiếu username" });
-        if (!password) return res.status(400).json({ msg: "Thiếu password" });
+        const identifier = req.body.username || req.body.email;
+        const password = req.body.password;
+        if (!identifier) return res.status(400).json({ success: false, msg: "Thiếu username hoặc email" });
+        if (!password) return res.status(400).json({ success: false, msg: "Thiếu password" });
 
-        const user = await AuthService.findAuthByUsername(username);
-        if (!user) return res.status(400).json({ msg: "Không tìm thấy user hoặc user đã bị vô hiệu hoá " });
+        let user = await AuthService.findAuthByUsername(identifier);
+        if (!user) {
+            user = await User.findAuthByIdentifier(identifier);
+        }
+        if (!user) return res.status(400).json({ success: false, msg: "Không tìm thấy user hoặc user đã bị vô hiệu hoá" });
 
         if (!user.password_hash)
-            return res.status(500).json({ msg: "Password chưa được lưu trong DB" });
+            return res.status(500).json({ success: false, msg: "Password chưa được lưu trong DB" });
 
         const isMatch = await bcrypt.compare(password, user.password_hash);
-        if (!isMatch) return res.status(400).json({ msg: "Password không đúng" });
+        if (!isMatch) return res.status(400).json({ success: false, msg: "Password không đúng" });
 
-        const token = jwt.sign({ id: user.id, username: user.username, role_code: user.role_code }, process.env.JWT_SECRET, { expiresIn: "1h" });
-        res.json({
+        const roleCode = (user.role_code || 'ADMIN').toUpperCase();
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role_code: roleCode, email: user.email }, 
+            process.env.JWT_SECRET, 
+            { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+        );
+
+        return res.json({
+            success: true,
             msg: "Đăng nhập thành công",
             token,
             user: {
                 id: user.id,
                 username: user.username,
                 email: user.email,
+                fullName: user.full_name || user.username,
+                name: user.full_name || user.username,
                 status: user.status,
-                role_code: user.role_code
+                role: roleCode.toLowerCase(),
+                role_code: roleCode
             }
         });
-        console.log("REQ BODY:", req.body);
-
-
     } catch (err) {
-        res.status(500).json({ msg: err.message });
+        console.error("Login error:", err);
+        return res.status(500).json({ success: false, msg: err.message });
+    }
+};
+
+// Lấy thông tin user hiện tại (Me)
+exports.getMe = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized" });
+        }
+        const [rows] = await require("../../db").query(
+            `SELECT u.id, u.username, u.email, u.full_name, u.phone, u.avatar_url, u.status, r.code AS role_code
+             FROM users u
+             LEFT JOIN user_role ur ON ur.user_id = u.id
+             LEFT JOIN roles r ON r.id = ur.role_id
+             WHERE u.id = ?`,
+            [userId]
+        );
+        if (!rows.length) return res.status(404).json({ success: false, message: "User not found" });
+        const u = rows[0];
+        const roleCode = (u.role_code || 'ADMIN').toUpperCase();
+        return res.json({
+            success: true,
+            user: {
+                id: u.id,
+                username: u.username,
+                email: u.email,
+                fullName: u.full_name || u.username,
+                name: u.full_name || u.username,
+                phone: u.phone,
+                avatarUrl: u.avatar_url,
+                role: roleCode.toLowerCase(),
+                role_code: roleCode,
+                status: u.status
+            }
+        });
+    } catch (err) {
+        console.error("getMe error:", err);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// Lấy danh sách users cho phân quyền / share
+exports.getUsers = async (req, res) => {
+    try {
+        const [rows] = await require("../../db").query(
+            `SELECT u.id, u.username, u.email, u.full_name, r.code AS role_code
+             FROM users u
+             LEFT JOIN user_role ur ON ur.user_id = u.id
+             LEFT JOIN roles r ON r.id = ur.role_id
+             WHERE u.is_active = 1 OR u.is_active IS NULL`
+        );
+        return res.json({
+            success: true,
+            data: rows.map(u => ({
+                id: u.id,
+                username: u.username,
+                email: u.email,
+                name: u.full_name || u.username,
+                fullName: u.full_name || u.username,
+                role: (u.role_code || 'customer').toLowerCase()
+            }))
+        });
+    } catch (err) {
+        console.error("getUsers error:", err);
+        return res.status(500).json({ success: false, message: err.message });
     }
 };
 

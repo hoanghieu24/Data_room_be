@@ -20,6 +20,13 @@ const reportRoutes = require("./routes/report/reportRoutes");
 const integrationRoutes = require("./routes/integration/integrationRoutes");
 const contractRoutes = require("./routes/contract/contractRoutes");
 const testRoutes = require("./routes/test/test");
+const fileRoutes = require("./routes/files/fileRoutes");
+const recycleBinRoutes = require("./routes/recycleBin/recycleBinRoutes");
+const permissionRoutes = require("./routes/permissions/permissionRoutes");
+const crmRoutes = require("./routes/crm/crmRoutes");
+const auditLogRoutes = require("./routes/auditLogs/auditLogRoutes");
+const notificationRoutes = require("./routes/notifications/notificationRoutes");
+const settingsRoutes = require("./routes/settings/settingsRoutes");
 
 const app = express();
 
@@ -29,7 +36,7 @@ const corsOptions = {
     "http://localhost:3000",
     "https://data-room-chi.vercel.app"
   ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-document-password"],
   credentials: true
 };
@@ -37,6 +44,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
@@ -66,6 +74,13 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/integrations", integrationRoutes);
 app.use("/api/contracts", contractRoutes);
+app.use("/api/files", fileRoutes);
+app.use("/api/recycle-bin", recycleBinRoutes);
+app.use("/api/permissions", permissionRoutes);
+app.use("/api/crm", crmRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/settings", settingsRoutes);
 
 const uploadDir = process.env.UPLOAD_DIR || "./uploads";
 const uploadDocumentsDir = path.join(uploadDir, "documents");

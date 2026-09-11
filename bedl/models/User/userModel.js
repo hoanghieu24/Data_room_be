@@ -8,14 +8,31 @@ class UserModel {
         const [rows] = await db.query(
             `
             SELECT 
-                u.id, u.username, u.password_hash, u.email,
-                u.is_active, r.code AS role_code
+                u.id, u.username, u.password_hash, u.email, u.full_name,
+                u.is_active, u.status, r.code AS role_code
             FROM users u
             JOIN user_role ur ON ur.user_id = u.id
             JOIN roles r ON r.id = ur.role_id
-            WHERE u.username = ? AND u.is_active = '1'
+            WHERE u.username = ? AND (u.is_active = 1 OR u.is_active IS NULL)
             `,
             [username]
+        );
+        return rows[0];
+    }
+
+    static async findAuthByIdentifier(identifier) {
+        const [rows] = await db.query(
+            `
+            SELECT 
+                u.id, u.username, u.password_hash, u.email, u.full_name,
+                u.is_active, u.status, r.code AS role_code
+            FROM users u
+            LEFT JOIN user_role ur ON ur.user_id = u.id
+            LEFT JOIN roles r ON r.id = ur.role_id
+            WHERE (u.username = ? OR u.email = ?) AND (u.is_active = 1 OR u.is_active IS NULL)
+            LIMIT 1
+            `,
+            [identifier, identifier]
         );
         return rows[0];
     }
@@ -200,15 +217,15 @@ class UserModel {
             u.phone,
             u.is_active,
             u.status,
-            r.code AS role_code,
-            r.name AS role_name,
+            COALESCE(r.code, 'STAFF') AS role_code,
+            COALESCE(r.name, 'Nhân viên') AS role_name,
             u.last_login,
             u.created_by,
             u.created_at
         FROM users u
-        JOIN user_role ur ON ur.user_id = u.id
-        JOIN roles r ON r.id = ur.role_id
-        ORDER BY u.created_at DESC
+        LEFT JOIN user_role ur ON ur.user_id = u.id
+        LEFT JOIN roles r ON r.id = ur.role_id
+        ORDER BY u.id DESC
         `
         );
         return rows;

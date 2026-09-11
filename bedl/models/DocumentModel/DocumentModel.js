@@ -335,6 +335,46 @@ class DocumentModel {
 
         return { canDelete: true, document };
     }
+
+    static async findAllDeleted() {
+        const [rows] = await db.query(
+            `SELECT d.id, d.document_code, d.name, d.file_name, d.file_size, d.file_type, 
+                    d.mime_type, d.deleted_at, d.updated_at, d.folder_id,
+                    u.username as uploaded_by_name, f.name as folder_name
+             FROM documents d
+             LEFT JOIN users u ON d.uploaded_by = u.id
+             LEFT JOIN folders f ON d.folder_id = f.id
+             WHERE d.deleted_at IS NOT NULL OR d.is_active = 0
+             ORDER BY d.deleted_at DESC`
+        );
+        return rows;
+    }
+
+    static async restore(id) {
+        const [result] = await db.query(
+            `UPDATE documents 
+             SET is_active = 1, deleted_at = NULL, updated_at = NOW() 
+             WHERE id = ?`,
+            [id]
+        );
+        return result.affectedRows > 0;
+    }
+
+    static async permanentDelete(id) {
+        await db.query(`DELETE FROM document_access_logs WHERE document_id = ?`, [id]);
+        const [result] = await db.query(`DELETE FROM documents WHERE id = ?`, [id]);
+        return result.affectedRows > 0;
+    }
+
+    static async emptyTrash() {
+        const [rows] = await db.query(`SELECT id FROM documents WHERE deleted_at IS NOT NULL OR is_active = 0`);
+        if (rows.length > 0) {
+            const ids = rows.map(r => r.id);
+            await db.query(`DELETE FROM document_access_logs WHERE document_id IN (?)`, [ids]);
+            await db.query(`DELETE FROM documents WHERE id IN (?)`, [ids]);
+        }
+        return true;
+    }
 }
 
 module.exports = DocumentModel;

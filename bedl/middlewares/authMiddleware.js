@@ -87,7 +87,28 @@ const authorize = (...roles) => {
     };
 };
 
+const optionalAuthenticate = (req, res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
+        const queryToken = req.query?.token;
+        const token = queryToken
+            ? queryToken
+            : authHeader && authHeader.startsWith("Bearer ")
+                ? authHeader.split(" ")[1]
+                : null;
+
+        if (token) {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            req.user = decoded;
+        }
+    } catch (error) {
+        // Silently ignore invalid token for optional auth
+    }
+    next();
+};
+
 module.exports = {
     authenticate,
-    authorize
+    authorize,
+    optionalAuthenticate
 };

@@ -15,4 +15,7 @@ router.put(
 );
 
 
+router.get("/me", authController.authMiddleware(), authController.getMe);
+router.get("/users", authController.authMiddleware(), authController.getUsers);
+
 module.exports = router;

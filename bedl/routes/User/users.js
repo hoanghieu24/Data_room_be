@@ -43,6 +43,12 @@ router.get(
     userController.getAllUsers
 );
 
+router.post(
+    "/admin",
+    userController.authMiddleware(["ADMIN"]),
+    userController.createUser
+);
+
 router.put("/profile", userController.authMiddleware(), userController.updateProfile);
 
 
