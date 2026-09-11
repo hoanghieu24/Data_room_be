@@ -2,6 +2,19 @@ const db = require("../../db");
 const bcrypt = require("bcryptjs");
 
 class DocumentModel {
+    static async ensurePasswordColumns() {
+        try {
+            const [cols] = await db.query("SHOW COLUMNS FROM documents LIKE 'access_password_hash'");
+            if (cols.length === 0) {
+                console.log("Adding missing column 'access_password_hash' to documents table...");
+                await db.query("ALTER TABLE documents ADD COLUMN access_password_hash VARCHAR(255) NULL AFTER access_level");
+                console.log("Column 'access_password_hash' added successfully.");
+            }
+        } catch (err) {
+            console.warn("Schema check warning (access_password_hash):", err.message);
+        }
+    }
+
     static async findAll(includeDeleted = false) {
         let query = `
             SELECT d.*, 
@@ -66,38 +79,48 @@ class DocumentModel {
             uploaded_by
         } = documentData;
 
-        const [result] = await db.query(
-            `INSERT INTO documents (
-                document_code, folder_id, name, description,
-                file_name, file_path, file_size, file_type,
-                mime_type, version, access_level, access_password_hash,
-                allowed_roles, allowed_users, metadata, tags, is_encrypted,
-                expiry_date, uploaded_by, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-            [
-                document_code,
-                folder_id,
-                name,
-                description,
-                file_name,
-                file_path,
-                file_size,
-                file_type,
-                mime_type,
-                version || 1,
-                access_level || "private",
-                access_password_hash || null,
-                allowed_roles || null,
-                allowed_users || null,
-                metadata || null,
-                tags || null,
-                is_encrypted || 0,
-                expiry_date || null,
-                uploaded_by
-            ]
-        );
+        const insertQuery = `INSERT INTO documents (
+            document_code, folder_id, name, description,
+            file_name, file_path, file_size, file_type,
+            mime_type, version, access_level, access_password_hash,
+            allowed_roles, allowed_users, metadata, tags, is_encrypted,
+            expiry_date, uploaded_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`;
 
-        return this.findById(result.insertId);
+        const insertParams = [
+            document_code,
+            folder_id,
+            name,
+            description,
+            file_name,
+            file_path,
+            file_size,
+            file_type,
+            mime_type,
+            version || 1,
+            access_level || "private",
+            access_password_hash || null,
+            allowed_roles || null,
+            allowed_users || null,
+            metadata || null,
+            tags || null,
+            is_encrypted || 0,
+            expiry_date || null,
+            uploaded_by
+        ];
+
+        try {
+            const [result] = await db.query(insertQuery, insertParams);
+            return this.findById(result.insertId);
+        } catch (err) {
+            if (err.message && err.message.includes("access_password_hash")) {
+                console.log("Detected missing access_password_hash column, auto-migrating and retrying insert...");
+                await DocumentModel.ensurePasswordColumns();
+                const [result] = await db.query(insertQuery, insertParams);
+                return this.findById(result.insertId);
+            }
+            throw err;
+        }
     }
 
     static async update(id, documentData) {
