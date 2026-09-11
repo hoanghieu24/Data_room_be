@@ -1,0 +1,532 @@
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
+import {
+  FolderPlus,
+  UploadCloud,
+  Search,
+  LayoutGrid,
+  List,
+  ArrowUpDown,
+  Folder,
+  FolderOpen,
+  Shield,
+  Trash2,
+  Edit2,
+  Move,
+  Lock,
+  Network,
+} from 'lucide-react';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { Breadcrumb } from '../components/layout/Breadcrumb';
+import { FolderTree, TreeNode } from '../components/dataroom/FolderTree';
+import { FileTable } from '../components/dataroom/FileTable';
+import { FileGrid } from '../components/dataroom/FileGrid';
+import { CreateFolderModal } from '../components/dataroom/CreateFolderModal';
+import { UploadModal } from '../components/dataroom/UploadModal';
+import { FilePreviewModal } from '../components/dataroom/FilePreviewModal';
+import { VersionHistoryModal } from '../components/dataroom/VersionHistoryModal';
+import { ShareModal } from '../components/dataroom/ShareModal';
+import { MoveModal } from '../components/dataroom/MoveModal';
+import { SetPasswordModal } from '../components/dataroom/SetPasswordModal';
+
+export const DataRoomPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentFolderId = searchParams.get('folderId') || null;
+
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  const [tree, setTree] = useState<TreeNode[]>([]);
+  const [folderData, setFolderData] = useState<any>({
+    breadcrumbs: [{ id: null, name: 'Root' }],
+    subfolders: [],
+    files: [],
+    currentFolderPermissions: {},
+  });
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Modals state
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [previewFile, setPreviewFile] = useState<any | null>(null);
+  const [versionsFile, setVersionsFile] = useState<any | null>(null);
+  const [shareItem, setShareItem] = useState<{ item: any; type: 'folder' | 'file' } | null>(null);
+  const [moveItem, setMoveItem] = useState<{ item: any; type: 'folder' | 'file' } | null>(null);
+  const [passwordFile, setPasswordFile] = useState<any | null>(null);
+
+  const fetchTree = async () => {
+    try {
+      const res = await api.get('/folders/tree');
+      if (res.data.success) {
+        setTree(res.data.tree || []);
+      }
+    } catch (e) {}
+  };
+
+  const fetchContents = async () => {
+    setLoading(true);
+    try {
+      const url = currentFolderId
+        ? '/folders/' + currentFolderId + '/contents'
+        : '/folders/contents';
+
+      const res = await api.get(url, {
+        params: {
+          search: searchQuery || undefined,
+          sortBy,
+          sortOrder,
+        },
+      });
+
+      if (res.data.success) {
+        setFolderData(res.data);
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Không thể truy cập thư mục này (chặn quyền)');
+      // If error, reset to root
+      if (currentFolderId) {
+        setSearchParams({});
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTree();
+  }, []);
+
+  useEffect(() => {
+    fetchContents();
+  }, [currentFolderId, searchQuery, sortBy, sortOrder]);
+
+  const handleSelectFolder = (fId: string | null) => {
+    if (fId) {
+      setSearchParams({ folderId: fId });
+    } else {
+      setSearchParams({});
+    }
+  };
+
+  const handleDownload = (file: any) => {
+    window.open('/api/files/' + file.id + '/download', '_blank');
+  };
+
+  const handleLockToggle = async (file: any) => {
+    try {
+      if (file.isLocked) {
+        const res = await api.post('/files/' + file.id + '/unlock');
+        if (res.data.success) {
+          toast('success', 'Đã mở khóa (Check-in) tài liệu');
+          fetchContents();
+        }
+      } else {
+        const res = await api.post('/files/' + file.id + '/lock');
+        if (res.data.success) {
+          toast('success', 'Đã khóa (Check-out) tài liệu cho bạn');
+          fetchContents();
+        }
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Thao tác khóa thất bại');
+    }
+  };
+
+  const handleRenameFolder = async (folder: any) => {
+    const newName = window.prompt('Nhập tên thư mục mới:', folder.name);
+    if (!newName || newName === folder.name) return;
+    try {
+      const res = await api.put('/folders/' + folder.id + '/rename', { name: newName });
+      if (res.data.success) {
+        toast('success', 'Đổi tên thư mục thành công');
+        fetchContents();
+        fetchTree();
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Lỗi đổi tên');
+    }
+  };
+
+  const handleDeleteFolder = async (folder: any) => {
+    try {
+      // Check impact
+      const impactRes = await api.get('/folders/' + folder.id + '/impact');
+      const { subfolderCount, fileCount } = impactRes.data.impact;
+      const msg =
+        'Bạn có chắc muốn chuyển thư mục \'' +
+        folder.name +
+        '\' vào Thùng rác?\n\nBên trong gồm:\n• ' +
+        subfolderCount +
+        ' thư mục con\n• ' +
+        fileCount +
+        ' tài liệu';
+
+      if (!window.confirm(msg)) return;
+
+      const res = await api.delete('/folders/' + folder.id);
+      if (res.data.success) {
+        toast('success', 'Đã chuyển thư mục vào Thùng rác');
+        fetchContents();
+        fetchTree();
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Lỗi xóa thư mục');
+    }
+  };
+
+  const handleRenameFile = async (file: any) => {
+    const newName = window.prompt('Nhập tên file mới:', file.name);
+    if (!newName || newName === file.name) return;
+    try {
+      const res = await api.put('/files/' + file.id + '/rename', { name: newName });
+      if (res.data.success) {
+        toast('success', 'Đổi tên file thành công');
+        fetchContents();
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Lỗi đổi tên');
+    }
+  };
+
+  const handleDeleteFile = async (file: any) => {
+    if (!window.confirm('Chuyển tài liệu \'' + file.name + '\' vào Thùng rác?')) return;
+    try {
+      const res = await api.delete('/files/' + file.id);
+      if (res.data.success) {
+        toast('success', 'Đã chuyển tệp vào Thùng rác');
+        fetchContents();
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Lỗi xóa tệp');
+    }
+  };
+
+  const perms = folderData.currentFolderPermissions || {};
+
+  return (
+    <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
+      {/* Left Sidebar: Folder Tree */}
+      <div className="w-64 bg-white border-r border-slate-200 flex flex-col h-full overflow-hidden flex-shrink-0">
+        <div className="p-3.5 border-b border-slate-100 flex items-center justify-between">
+          <span className="font-bold text-xs text-slate-800 uppercase tracking-wider">
+            Cây Thư Mục Data Room
+          </span>
+          <button
+            onClick={() => setIsCreateFolderOpen(true)}
+            className="p-1 hover:bg-slate-100 text-blue-600 rounded-lg transition-colors"
+            title="Tạo thư mục mới"
+          >
+            <FolderPlus className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          <FolderTree
+            tree={tree}
+            selectedFolderId={currentFolderId}
+            onSelectFolder={handleSelectFolder}
+          />
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+        {/* Top Control Toolbar */}
+        <div className="p-4 bg-white border-b border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs">
+          {/* Breadcrumbs */}
+          <div className="flex-1 overflow-x-auto">
+            <Breadcrumb
+              items={folderData.breadcrumbs || []}
+              onSelect={handleSelectFolder}
+            />
+          </div>
+
+          {/* Actions & Filters */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+              <input
+                type="text"
+                placeholder="Tìm file hoặc thư mục..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 pr-3 py-1.5 text-xs bg-slate-100 border border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-hidden w-48 transition-all"
+              />
+            </div>
+
+            {/* Sort Dropdown */}
+            <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-transparent px-2 py-1 outline-hidden text-slate-700 font-medium cursor-pointer"
+              >
+                <option value="name">Tên</option>
+                <option value="updatedAt">Ngày sửa</option>
+                <option value="size">Dung lượng</option>
+              </select>
+              <button
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="p-1 text-slate-500 hover:text-slate-800"
+                title="Đảo chiều sắp xếp"
+              >
+                <ArrowUpDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  viewMode === 'table' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-700'
+                }`}
+                title="Dạng bảng"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  viewMode === 'grid' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-700'
+                }`}
+                title="Dạng lưới"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Xem tổng quát (Tech Map) Button */}
+            <Link
+              to="/system-overview"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700 text-xs font-semibold rounded-xl shadow-xs transition-all cursor-pointer"
+              title="Xem sơ đồ cấu trúc tổng quát hệ thống"
+            >
+              <Network className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Xem tổng quát (Tech Map)</span>
+            </Link>
+
+            {/* Action Buttons */}
+            {perms.canEdit !== false && (
+              <>
+                <button
+                  onClick={() => setIsCreateFolderOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl border border-slate-300 transition-colors"
+                >
+                  <FolderPlus className="w-4 h-4 text-amber-600" /> Thư mục mới
+                </button>
+
+                <button
+                  onClick={() => setIsUploadOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors"
+                >
+                  <UploadCloud className="w-4 h-4" /> Tải lên tài liệu
+                </button>
+              </>
+            )}
+
+            {currentFolderId && perms.canShare !== false && (
+              <button
+                onClick={() =>
+                  setShareItem({
+                    item: { id: currentFolderId, name: folderData.breadcrumbs?.slice(-1)[0]?.name || 'Thư mục' },
+                    type: 'folder',
+                  })
+                }
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold rounded-xl transition-colors"
+              >
+                <Shield className="w-4 h-4" /> Phân quyền Folder
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Contents Area */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Subfolders Section */}
+          {folderData.subfolders?.length > 0 && (
+            <div>
+              <div className="text-xs font-bold text-slate-700 mb-3 uppercase tracking-wider flex items-center gap-2">
+                <span>Thư mục con ({folderData.subfolders.length})</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {folderData.subfolders.map((folder: any) => (
+                  <div
+                    key={folder.id}
+                    className="p-3 bg-white rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-sm transition-all flex items-center justify-between group"
+                  >
+                    <div
+                      onClick={() => handleSelectFolder(folder.id)}
+                      className="flex items-center gap-3 cursor-pointer overflow-hidden flex-1"
+                    >
+                      <div className="p-2 bg-amber-50 text-amber-500 rounded-lg group-hover:scale-105 transition-transform">
+                        <Folder className="w-5 h-5" />
+                      </div>
+                      <div className="truncate">
+                        <div className="font-semibold text-xs text-slate-800 truncate group-hover:text-blue-600">
+                          {folder.name}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {folder.fileCount} file • {folder.subfolderCount} thư mục
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Folder actions dropdown */}
+                    {perms.canEdit !== false && (
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleRenameFolder(folder)}
+                          className="p-1 hover:bg-slate-100 text-slate-400 hover:text-amber-600 rounded"
+                          title="Đổi tên"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setMoveItem({ item: folder, type: 'folder' })}
+                          className="p-1 hover:bg-slate-100 text-slate-400 hover:text-blue-600 rounded"
+                          title="Di chuyển"
+                        >
+                          <Move className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteFolder(folder)}
+                          className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded"
+                          title="Xóa vào thùng rác"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Files Section */}
+          <div>
+            <div className="text-xs font-bold text-slate-700 mb-3 uppercase tracking-wider flex items-center justify-between">
+              <span>Tài liệu trong thư mục ({folderData.files?.length || 0})</span>
+            </div>
+
+            {loading ? (
+              <div className="text-center p-12 text-slate-400 text-xs">Đang tải tài liệu...</div>
+            ) : folderData.files?.length === 0 && folderData.subfolders?.length === 0 ? (
+              <div className="text-center p-16 bg-white rounded-2xl border border-dashed border-slate-300">
+                <FolderOpen className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                <div className="font-bold text-slate-700 text-sm">Thư mục hiện đang trống</div>
+                <p className="text-xs text-slate-400 mt-1 mb-4">
+                  Bắt đầu lưu trữ bằng cách tải lên tài liệu mới hoặc tạo thư mục con.
+                </p>
+                {perms.canEdit !== false && (
+                  <button
+                    onClick={() => setIsUploadOpen(true)}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <UploadCloud className="w-4 h-4" /> Tải lên tài liệu ngay
+                  </button>
+                )}
+              </div>
+            ) : viewMode === 'table' ? (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
+                <FileTable
+                  files={folderData.files || []}
+                  onPreview={(f) => setPreviewFile(f)}
+                  onDownload={handleDownload}
+                  onShare={(f) => setShareItem({ item: f, type: 'file' })}
+                  onVersions={(f) => setVersionsFile(f)}
+                  onLockToggle={handleLockToggle}
+                  onRename={handleRenameFile}
+                  onMove={(f) => setMoveItem({ item: f, type: 'file' })}
+                  onDelete={handleDeleteFile}
+                  onSetPassword={(f) => setPasswordFile(f)}
+                />
+              </div>
+            ) : (
+              <FileGrid
+                files={folderData.files || []}
+                onPreview={(f) => setPreviewFile(f)}
+                onDownload={handleDownload}
+                onShare={(f) => setShareItem({ item: f, type: 'file' })}
+                onVersions={(f) => setVersionsFile(f)}
+                onSetPassword={(f) => setPasswordFile(f)}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      <CreateFolderModal
+        isOpen={isCreateFolderOpen}
+        onClose={() => setIsCreateFolderOpen(false)}
+        parentId={currentFolderId}
+        onSuccess={() => {
+          fetchContents();
+          fetchTree();
+        }}
+      />
+
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        folderId={currentFolderId}
+        onSuccess={fetchContents}
+      />
+
+      <FilePreviewModal
+        isOpen={!!previewFile}
+        file={previewFile}
+        onClose={() => setPreviewFile(null)}
+        onDownload={handleDownload}
+      />
+
+      <VersionHistoryModal
+        isOpen={!!versionsFile}
+        file={versionsFile}
+        onClose={() => setVersionsFile(null)}
+        onSuccess={fetchContents}
+      />
+
+      {shareItem && (
+        <ShareModal
+          isOpen={!!shareItem}
+          item={shareItem.item}
+          type={shareItem.type}
+          onClose={() => setShareItem(null)}
+        />
+      )}
+
+      {moveItem && (
+        <MoveModal
+          isOpen={!!moveItem}
+          item={moveItem.item}
+          type={moveItem.type}
+          onClose={() => setMoveItem(null)}
+          onSuccess={() => {
+            fetchContents();
+            fetchTree();
+          }}
+        />
+      )}
+
+      {passwordFile && (
+        <SetPasswordModal
+          isOpen={!!passwordFile}
+          file={passwordFile}
+          onClose={() => setPasswordFile(null)}
+          onSuccess={fetchContents}
+        />
+      )}
+    </div>
+  );
+};

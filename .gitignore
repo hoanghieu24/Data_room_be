@@ -1,6 +1,21 @@
+# Backend
 bedl/node_modules/
 bedl/.env
+bedl/.env.*
 bedl/uploads/
 bedl/temp/
+
+# Frontend
+client/node_modules/
+client/dist/
+client/.env
+client/.env.*
+
+# General
 node_modules/
+dist/
 .env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
