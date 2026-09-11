@@ -68,6 +68,7 @@ export const DataRoomPage: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [dragItem, setDragItem] = useState<{ id: string; type: 'folder' | 'file'; name: string } | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [createFolderParentId, setCreateFolderParentId] = useState<string | null | undefined>(undefined);
 
   const fetchTree = async () => {
     try {
@@ -278,10 +279,11 @@ export const DataRoomPage: React.FC = () => {
                 <button
                   onClick={() => {
                     setIsMobileFolderTreeOpen(false);
+                    setCreateFolderParentId(null);
                     setIsCreateFolderOpen(true);
                   }}
                   className="p-1 hover:bg-slate-100 text-blue-600 rounded-lg transition-colors cursor-pointer"
-                  title="Tạo thư mục mới"
+                  title="Tạo thư mục gốc mới (Cùng cấp Data Room)"
                 >
                   <FolderPlus className="w-4 h-4" />
                 </button>
@@ -307,6 +309,11 @@ export const DataRoomPage: React.FC = () => {
                   setDragOverFolderId(null);
                 }}
                 onDeleteFolder={handleDeleteFolder}
+                onCreateRootFolder={() => {
+                  setIsMobileFolderTreeOpen(false);
+                  setCreateFolderParentId(null);
+                  setIsCreateFolderOpen(true);
+                }}
               />
             </div>
           </div>
@@ -325,9 +332,12 @@ export const DataRoomPage: React.FC = () => {
           </span>
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setIsCreateFolderOpen(true)}
+              onClick={() => {
+                setCreateFolderParentId(null);
+                setIsCreateFolderOpen(true);
+              }}
               className="p-1 hover:bg-slate-100 text-blue-600 rounded-lg transition-colors cursor-pointer"
-              title="Tạo thư mục mới"
+              title="Tạo thư mục gốc mới (Cùng cấp Data Room)"
             >
               <FolderPlus className="w-4 h-4" />
             </button>
@@ -354,6 +364,10 @@ export const DataRoomPage: React.FC = () => {
               setDragOverFolderId(null);
             }}
             onDeleteFolder={handleDeleteFolder}
+            onCreateRootFolder={() => {
+              setCreateFolderParentId(null);
+              setIsCreateFolderOpen(true);
+            }}
           />
         </div>
       </div>
@@ -476,7 +490,10 @@ export const DataRoomPage: React.FC = () => {
               {perms.canEdit !== false && (
                 <>
                   <button
-                    onClick={() => setIsCreateFolderOpen(true)}
+                    onClick={() => {
+                      setCreateFolderParentId(currentFolderId);
+                      setIsCreateFolderOpen(true);
+                    }}
                     className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl border border-slate-300 transition-colors cursor-pointer shrink-0"
                   >
                     <FolderPlus className="w-4 h-4 text-amber-600" />
@@ -740,8 +757,12 @@ export const DataRoomPage: React.FC = () => {
       {/* Modals */}
       <CreateFolderModal
         isOpen={isCreateFolderOpen}
-        onClose={() => setIsCreateFolderOpen(false)}
-        parentId={currentFolderId}
+        onClose={() => {
+          setIsCreateFolderOpen(false);
+          setCreateFolderParentId(undefined);
+        }}
+        parentId={createFolderParentId !== undefined ? createFolderParentId : currentFolderId}
+        tree={tree}
         onSuccess={() => {
           fetchContents();
           fetchTree();

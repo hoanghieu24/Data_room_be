@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Folder, FolderOpen, ChevronRight, ChevronDown, Layers, Trash2, GripVertical } from 'lucide-react';
+import { Folder, FolderOpen, ChevronRight, ChevronDown, Layers, Trash2, GripVertical, FolderPlus } from 'lucide-react';
 
 export interface TreeNode {
   id: string;
@@ -20,6 +20,7 @@ interface FolderTreeProps {
   onDragStartItem?: (item: { id: string; type: 'folder'; name: string }) => void;
   onDragEndItem?: () => void;
   onDeleteFolder?: (folder: any) => void;
+  onCreateRootFolder?: () => void;
 }
 
 const TreeItem: React.FC<{
@@ -165,6 +166,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   onDragStartItem,
   onDragEndItem,
   onDeleteFolder,
+  onCreateRootFolder,
 }) => {
   const [isRootDragOver, setIsRootDragOver] = useState(false);
 
@@ -190,7 +192,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             onDropItem?.(null);
           }
         }}
-        className={`flex items-center gap-2 py-1.5 px-2.5 rounded-lg cursor-pointer text-xs font-semibold transition-colors ${
+        className={`group flex items-center gap-2 py-1.5 px-2.5 rounded-lg cursor-pointer text-xs font-semibold transition-colors ${
           isRootDragOver
             ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02]'
             : selectedFolderId === null
@@ -199,7 +201,25 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
         }`}
       >
         <Layers className="w-4 h-4" />
-        <span>Tất cả thư mục (Root)</span>
+        <span className="truncate">Tất cả thư mục (Root)</span>
+
+        {onCreateRootFolder && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreateRootFolder();
+            }}
+            className={`p-1 rounded transition-all cursor-pointer ml-auto shrink-0 opacity-0 group-hover:opacity-100 ${
+              selectedFolderId === null
+                ? 'hover:bg-blue-700 text-blue-100 hover:text-white'
+                : 'hover:bg-slate-200 text-slate-400 hover:text-blue-600'
+            }`}
+            title="Tạo thư mục mới ở Root (cùng cấp với Data Room)"
+          >
+            <FolderPlus className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="pt-1 space-y-0.5">
