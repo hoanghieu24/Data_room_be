@@ -15,6 +15,7 @@ import {
   Move,
   Lock,
   Network,
+  X,
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -59,6 +60,7 @@ export const DataRoomPage: React.FC = () => {
   const [shareItem, setShareItem] = useState<{ item: any; type: 'folder' | 'file' } | null>(null);
   const [moveItem, setMoveItem] = useState<{ item: any; type: 'folder' | 'file' } | null>(null);
   const [passwordFile, setPasswordFile] = useState<any | null>(null);
+  const [isMobileFolderTreeOpen, setIsMobileFolderTreeOpen] = useState(false);
 
   const fetchTree = async () => {
     try {
@@ -107,6 +109,7 @@ export const DataRoomPage: React.FC = () => {
   }, [currentFolderId, searchQuery, sortBy, sortOrder]);
 
   const handleSelectFolder = (fId: string | null) => {
+    setIsMobileFolderTreeOpen(false);
     if (fId) {
       setSearchParams({ folderId: fId });
     } else {
@@ -210,16 +213,60 @@ export const DataRoomPage: React.FC = () => {
   const perms = folderData.currentFolderPermissions || {};
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
-      {/* Left Sidebar: Folder Tree */}
-      <div className="w-64 bg-white border-r border-slate-200 flex flex-col h-full overflow-hidden flex-shrink-0">
+    <div className="flex h-[calc(100vh-4rem)] overflow-hidden relative">
+      {/* Mobile Folder Tree Backdrop & Drawer */}
+      {isMobileFolderTreeOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex">
+          <div
+            onClick={() => setIsMobileFolderTreeOpen(false)}
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+            aria-hidden="true"
+          />
+          <div className="relative w-72 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col z-50 animate-in slide-in-from-left duration-200">
+            <div className="p-3.5 border-b border-slate-100 flex items-center justify-between">
+              <span className="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Folder className="w-4 h-4 text-blue-600" /> Cây Thư Mục
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    setIsMobileFolderTreeOpen(false);
+                    setIsCreateFolderOpen(true);
+                  }}
+                  className="p-1 hover:bg-slate-100 text-blue-600 rounded-lg transition-colors cursor-pointer"
+                  title="Tạo thư mục mới"
+                >
+                  <FolderPlus className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setIsMobileFolderTreeOpen(false)}
+                  className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-colors cursor-pointer"
+                  title="Đóng"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              <FolderTree
+                tree={tree}
+                selectedFolderId={currentFolderId}
+                onSelectFolder={handleSelectFolder}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Left Sidebar: Folder Tree (Desktop) */}
+      <div className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col h-full overflow-hidden flex-shrink-0">
         <div className="p-3.5 border-b border-slate-100 flex items-center justify-between">
           <span className="font-bold text-xs text-slate-800 uppercase tracking-wider">
             Cây Thư Mục Data Room
           </span>
           <button
             onClick={() => setIsCreateFolderOpen(true)}
-            className="p-1 hover:bg-slate-100 text-blue-600 rounded-lg transition-colors"
+            className="p-1 hover:bg-slate-100 text-blue-600 rounded-lg transition-colors cursor-pointer"
             title="Tạo thư mục mới"
           >
             <FolderPlus className="w-4 h-4" />
@@ -236,120 +283,142 @@ export const DataRoomPage: React.FC = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 min-w-0">
         {/* Top Control Toolbar */}
-        <div className="p-4 bg-white border-b border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs">
-          {/* Breadcrumbs */}
-          <div className="flex-1 overflow-x-auto">
-            <Breadcrumb
-              items={folderData.breadcrumbs || []}
-              onSelect={handleSelectFolder}
-            />
-          </div>
-
-          {/* Actions & Filters */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-              <input
-                type="text"
-                placeholder="Tìm file hoặc thư mục..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-3 py-1.5 text-xs bg-slate-100 border border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-hidden w-48 transition-all"
+        <div className="p-3 sm:p-4 bg-white border-b border-slate-200 flex flex-col gap-3 shadow-xs">
+          {/* Row 1: Breadcrumbs + Folder Tree Mobile button */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-1 overflow-x-auto min-w-0">
+              <Breadcrumb
+                items={folderData.breadcrumbs || []}
+                onSelect={handleSelectFolder}
               />
             </div>
-
-            {/* Sort Dropdown */}
-            <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs">
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="bg-transparent px-2 py-1 outline-hidden text-slate-700 font-medium cursor-pointer"
-              >
-                <option value="name">Tên</option>
-                <option value="updatedAt">Ngày sửa</option>
-                <option value="size">Dung lượng</option>
-              </select>
-              <button
-                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="p-1 text-slate-500 hover:text-slate-800"
-                title="Đảo chiều sắp xếp"
-              >
-                <ArrowUpDown className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* View Mode Toggle */}
-            <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200">
-              <button
-                onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-lg transition-colors ${
-                  viewMode === 'table' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-700'
-                }`}
-                title="Dạng bảng"
-              >
-                <List className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-lg transition-colors ${
-                  viewMode === 'grid' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-700'
-                }`}
-                title="Dạng lưới"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Xem tổng quát (Tech Map) Button */}
-            <Link
-              to="/system-overview"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700 text-xs font-semibold rounded-xl shadow-xs transition-all cursor-pointer"
-              title="Xem sơ đồ cấu trúc tổng quát hệ thống"
+            <button
+              onClick={() => setIsMobileFolderTreeOpen(true)}
+              className="lg:hidden shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-xl border border-blue-200 transition-colors cursor-pointer"
+              title="Mở cây thư mục"
             >
-              <Network className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Xem tổng quát (Tech Map)</span>
-            </Link>
+              <Folder className="w-3.5 h-3.5" />
+              <span>Cây thư mục</span>
+            </button>
+          </div>
 
-            {/* Action Buttons */}
-            {perms.canEdit !== false && (
-              <>
-                <button
-                  onClick={() => setIsCreateFolderOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl border border-slate-300 transition-colors"
+          {/* Row 2: Search, Sort, View, Tech Map, and Actions */}
+          <div className="flex items-center justify-between gap-2.5 flex-wrap">
+            {/* Search, Sort, and View mode group */}
+            <div className="flex items-center gap-2 flex-wrap flex-1 min-w-[240px]">
+              {/* Search Input */}
+              <div className="relative flex-1 sm:flex-initial">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Tìm file hoặc thư mục..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 text-xs bg-slate-100 border border-transparent focus:border-blue-500 focus:bg-white rounded-xl outline-hidden w-full sm:w-44 md:w-56 transition-all"
+                />
+              </div>
+
+              {/* Sort Dropdown */}
+              <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs shrink-0">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="bg-transparent px-2 py-1 outline-hidden text-slate-700 font-medium cursor-pointer"
                 >
-                  <FolderPlus className="w-4 h-4 text-amber-600" /> Thư mục mới
-                </button>
-
+                  <option value="name">Tên</option>
+                  <option value="updatedAt">Ngày sửa</option>
+                  <option value="size">Dung lượng</option>
+                </select>
                 <button
-                  onClick={() => setIsUploadOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors"
+                  onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                  className="p-1 text-slate-500 hover:text-slate-800 cursor-pointer"
+                  title="Đảo chiều sắp xếp"
                 >
-                  <UploadCloud className="w-4 h-4" /> Tải lên tài liệu
+                  <ArrowUpDown className="w-3.5 h-3.5" />
                 </button>
-              </>
-            )}
+              </div>
 
-            {currentFolderId && perms.canShare !== false && (
-              <button
-                onClick={() =>
-                  setShareItem({
-                    item: { id: currentFolderId, name: folderData.breadcrumbs?.slice(-1)[0]?.name || 'Thư mục' },
-                    type: 'folder',
-                  })
-                }
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold rounded-xl transition-colors"
+              {/* View Mode Toggle */}
+              <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 shrink-0">
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    viewMode === 'table' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="Dạng bảng"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    viewMode === 'grid' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="Dạng lưới"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Actions group */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Xem tổng quát (Tech Map) Button */}
+              <Link
+                to="/system-overview"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700 text-xs font-semibold rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
+                title="Xem sơ đồ cấu trúc tổng quát hệ thống"
               >
-                <Shield className="w-4 h-4" /> Phân quyền Folder
-              </button>
-            )}
+                <Network className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="hidden sm:inline">Xem tổng quát (Tech Map)</span>
+                <span className="sm:hidden">Tech Map</span>
+              </Link>
+
+              {perms.canEdit !== false && (
+                <>
+                  <button
+                    onClick={() => setIsCreateFolderOpen(true)}
+                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl border border-slate-300 transition-colors cursor-pointer shrink-0"
+                  >
+                    <FolderPlus className="w-4 h-4 text-amber-600" />
+                    <span className="hidden sm:inline">Thư mục mới</span>
+                    <span className="sm:hidden">Thư mục</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsUploadOpen(true)}
+                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors cursor-pointer shrink-0"
+                  >
+                    <UploadCloud className="w-4 h-4" />
+                    <span className="hidden sm:inline">Tải lên tài liệu</span>
+                    <span className="sm:hidden">Tải lên</span>
+                  </button>
+                </>
+              )}
+
+              {currentFolderId && perms.canShare !== false && (
+                <button
+                  onClick={() =>
+                    setShareItem({
+                      item: { id: currentFolderId, name: folderData.breadcrumbs?.slice(-1)[0]?.name || 'Thư mục' },
+                      type: 'folder',
+                    })
+                  }
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold rounded-xl transition-colors cursor-pointer shrink-0"
+                >
+                  <Shield className="w-4 h-4" />
+                  <span className="hidden sm:inline">Phân quyền Folder</span>
+                  <span className="sm:hidden">Phân quyền</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Contents Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
           {/* Subfolders Section */}
           {folderData.subfolders?.length > 0 && (
             <div>

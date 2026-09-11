@@ -90,9 +90,9 @@ export const SetPasswordModal: React.FC<SetPasswordModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[92vh] flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
           <div className="flex items-center gap-2 font-bold text-slate-800 text-sm">
             <Lock className="w-5 h-5 text-amber-600" />
             <span>{isProtected ? 'Quản lý mật mã bảo vệ tài liệu' : 'Cài đặt mật mã bảo vệ tài liệu'}</span>
@@ -100,14 +100,14 @@ export const SetPasswordModal: React.FC<SetPasswordModalProps> = ({
           <button
             onClick={onClose}
             disabled={loading}
-            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
+            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Form Body */}
-        <div className="p-5 space-y-4">
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
             <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
               Tài liệu áp dụng

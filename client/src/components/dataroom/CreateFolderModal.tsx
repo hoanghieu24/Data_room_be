@@ -51,18 +51,18 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+      <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 font-bold text-slate-800 text-sm">
             <FolderPlus className="w-5 h-5 text-blue-600" />
             <span>Tạo thư mục mới</span>
           </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg">
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-3">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-3 overflow-y-auto flex-1">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Tên thư mục <span className="text-rose-500">*</span>

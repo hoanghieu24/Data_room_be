@@ -129,8 +129,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+      <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 font-bold text-slate-800 text-sm">
             <UploadCloud className="w-5 h-5 text-blue-600" />
             <span>Tải lên tài liệu mới</span>
@@ -138,13 +138,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           <button
             onClick={onClose}
             disabled={uploading}
-            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
           {/* Drag & Drop Area */}
           <div
             onClick={() => fileInputRef.current?.click()}

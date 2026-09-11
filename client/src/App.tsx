@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -16,6 +16,7 @@ import { SystemOverviewPage } from './pages/SystemOverviewPage';
 
 const ProtectedLayout: React.FC = () => {
   const { user, loading } = useAuth();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   if (loading) {
     return (
@@ -30,11 +31,19 @@ const ProtectedLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      <Sidebar />
-      <div className="flex-1 ml-64 flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-1">
+    <div className="min-h-screen flex bg-slate-50 relative">
+      {/* Responsive Sidebar */}
+      <Sidebar
+        isMobileOpen={mobileSidebarOpen}
+        onClose={() => setMobileSidebarOpen(false)}
+      />
+
+      {/* Main Page Content - takes 100% on mobile, indented by 64 on lg screens */}
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen min-w-0">
+        <Navbar
+          onToggleMobileSidebar={() => setMobileSidebarOpen((prev) => !prev)}
+        />
+        <main className="flex-1 min-w-0 overflow-x-hidden">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/system-overview" element={<SystemOverviewPage />} />

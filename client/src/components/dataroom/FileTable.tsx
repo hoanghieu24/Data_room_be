@@ -125,16 +125,16 @@ export const FileTable: React.FC<FileTableProps> = ({
 
   return (
     <div className="w-full overflow-x-auto min-h-[140px]">
-      <table className="w-full text-left text-xs text-slate-600 border-collapse min-w-[760px]">
+      <table className="w-full text-left text-xs text-slate-600 border-collapse min-w-[500px] sm:min-w-[700px]">
         <thead>
           <tr className="bg-slate-50/90 text-slate-700 font-semibold border-b border-slate-200 select-none">
-            <th className="py-3 px-4 min-w-[280px]">Tên tài liệu</th>
-            <th className="py-3 px-3 w-28 text-center">Phiên bản</th>
-            <th className="py-3 px-3 w-36">Bảo mật / Khóa</th>
-            <th className="py-3 px-3 w-28">Dung lượng</th>
-            <th className="py-3 px-3 w-32">Người tải lên</th>
-            <th className="py-3 px-3 w-28">Cập nhật</th>
-            <th className="py-3 px-4 w-44 text-right">Thao tác</th>
+            <th className="py-3 px-3 sm:px-4 min-w-[180px] sm:min-w-[260px]">Tên tài liệu</th>
+            <th className="py-3 px-2 sm:px-3 w-24 text-center hidden md:table-cell">Phiên bản</th>
+            <th className="py-3 px-2 sm:px-3 w-32 hidden sm:table-cell">Bảo mật / Khóa</th>
+            <th className="py-3 px-2 sm:px-3 w-24">Dung lượng</th>
+            <th className="py-3 px-2 sm:px-3 w-28 hidden lg:table-cell">Người tải lên</th>
+            <th className="py-3 px-2 sm:px-3 w-24 hidden md:table-cell">Cập nhật</th>
+            <th className="py-3 px-3 sm:px-4 w-32 sm:w-40 text-right">Thao tác</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -151,8 +151,8 @@ export const FileTable: React.FC<FileTableProps> = ({
 
             return (
               <tr key={file.id} className="hover:bg-blue-50/30 transition-colors group">
-                <td className="py-3 px-4">
-                  <div className="flex items-center gap-3">
+                <td className="py-3 px-3 sm:px-4">
+                  <div className="flex items-center gap-2.5 sm:gap-3">
                     <div className="p-2 bg-slate-100 rounded-xl border border-slate-200/80 shrink-0 group-hover:bg-blue-50 group-hover:border-blue-200 transition-colors">
                       {getFileIcon(file)}
                     </div>
@@ -166,7 +166,7 @@ export const FileTable: React.FC<FileTableProps> = ({
                       >
                         {file.name}
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider bg-slate-100 px-1.5 py-0.2 rounded">
                           {ext || 'FILE'}
                         </span>
@@ -185,7 +185,7 @@ export const FileTable: React.FC<FileTableProps> = ({
                   </div>
                 </td>
 
-                <td className="py-3 px-3 text-center">
+                <td className="py-3 px-2 sm:px-3 text-center hidden md:table-cell">
                   <button
                     onClick={() => onVersions(file)}
                     className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-colors cursor-pointer"
@@ -195,7 +195,7 @@ export const FileTable: React.FC<FileTableProps> = ({
                   </button>
                 </td>
 
-                <td className="py-3 px-3">
+                <td className="py-3 px-2 sm:px-3 hidden sm:table-cell">
                   {file.isLocked ? (
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
                       <Lock className="w-3 h-3 text-rose-500" />
@@ -212,11 +212,11 @@ export const FileTable: React.FC<FileTableProps> = ({
                   )}
                 </td>
 
-                <td className="py-3 px-3 font-medium text-slate-700 whitespace-nowrap">{formatSize(file.size)}</td>
-                <td className="py-3 px-3 text-slate-700 truncate max-w-[120px]" title={uploaderName}>
+                <td className="py-3 px-2 sm:px-3 font-medium text-slate-700 whitespace-nowrap">{formatSize(file.size)}</td>
+                <td className="py-3 px-2 sm:px-3 text-slate-700 truncate max-w-[120px] hidden lg:table-cell" title={uploaderName}>
                   {uploaderName}
                 </td>
-                <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
+                <td className="py-3 px-2 sm:px-3 text-slate-500 whitespace-nowrap hidden md:table-cell">
                   {file.updatedAt || file.createdAt
                     ? new Date(file.updatedAt || file.createdAt).toLocaleDateString('vi-VN')
                     : '-'}
