@@ -1,16 +1,26 @@
 const mysql = require("mysql2");
 require("dotenv").config();
 
-const pool = mysql.createPool({
-  host: process.env.MYSQLHOST,
-  port: process.env.MYSQLPORT,
-  user: process.env.MYSQLUSER,
-  password: process.env.MYSQLPASSWORD,
-  database: process.env.MYSQLDATABASE,
+const poolConfig = {
+  host: process.env.MYSQLHOST || 'localhost',
+  port: process.env.MYSQLPORT ? Number(process.env.MYSQLPORT) : 3306,
+  user: process.env.MYSQLUSER || 'root',
+  password: process.env.MYSQLPASSWORD || '',
+  database: process.env.MYSQLDATABASE || 'crm_data_room',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
-});
+};
+
+// Tự động bật SSL khi kết nối tới database trên Cloud (Aiven, PlanetScale, TiDB, v.v.)
+const host = process.env.MYSQLHOST || '';
+if (process.env.MYSQLSSL === 'true' || (host && !host.includes('localhost') && !host.includes('127.0.0.1'))) {
+  poolConfig.ssl = {
+    rejectUnauthorized: false
+  };
+}
+
+const pool = mysql.createPool(poolConfig);
 
 const promisePool = pool.promise();
 
