@@ -11,7 +11,11 @@ import {
   UserCheck,
   Plus,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import api from '../../services/api';
 import { useToast } from '../../context/ToastContext';
@@ -40,6 +44,11 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   const [expiryDate, setExpiryDate] = useState('');
   const [securityLevel, setSecurityLevel] = useState<'CONFIDENTIAL' | 'INTERNAL' | 'PUBLIC'>('INTERNAL');
   const [description, setDescription] = useState('');
+
+  // Mật khẩu bảo vệ tài liệu
+  const [enablePassword, setEnablePassword] = useState(false);
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Quy tắc đặt tên file
   const [customFileName, setCustomFileName] = useState('');
@@ -203,6 +212,9 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       if (expiryDate) formData.append('expiry_date', expiryDate);
       formData.append('security_level', securityLevel);
       if (description) formData.append('description', description.trim());
+      if (enablePassword && password.trim()) {
+        formData.append('password', password.trim());
+      }
       if (permissions.length > 0) {
         formData.append('initial_permissions', JSON.stringify(permissions));
       }
@@ -512,6 +524,55 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 placeholder="Nhập tóm tắt nội dung văn bản..."
                 className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
+            </div>
+
+            {/* Cài đặt Mật khẩu bảo vệ */}
+            <div className="md:col-span-2 p-3.5 bg-amber-50/70 rounded-xl border border-amber-200">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={enablePassword}
+                    onChange={(e) => setEnablePassword(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300"
+                  />
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900">
+                    <Lock className="w-4 h-4 text-amber-600" />
+                    <span>Bảo vệ tài liệu bằng mật mã truy cập (Password Protection)</span>
+                  </div>
+                </label>
+                {enablePassword && (
+                  <span className="text-[11px] font-semibold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-300">
+                    Đang bật khóa mã
+                  </span>
+                )}
+              </div>
+
+              {enablePassword && (
+                <div className="mt-3 pt-3 border-t border-amber-200/80">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Nhập mật mã để khóa tài liệu..."
+                        className="w-full text-xs px-3 py-2 pr-9 rounded-xl border border-amber-300 bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-amber-700">
+                    * Bất kỳ ai muốn xem trước, in hoặc tải tệp đều bắt buộc phải nhập đúng mật mã này (trừ Quản trị viên và người tạo tài liệu).
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

@@ -39,6 +39,7 @@ router.get('/:id/preview-file', DmsController.streamFile);
 router.get('/:id/view', DmsController.streamFile);
 router.get('/:id/download', DmsController.downloadFile);
 router.post('/:id/print', DmsController.logPrint);
+router.post('/:id/password', DmsController.setPassword);
 
 // Versions
 router.get('/:id/versions', DmsController.getVersions);

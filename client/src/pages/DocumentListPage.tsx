@@ -26,6 +26,7 @@ import {
   ChevronRight,
   ArrowUpDown,
   Lock,
+  KeyRound,
   Tag
 } from 'lucide-react';
 import api from '../services/api';
@@ -35,6 +36,7 @@ import { CreateDocumentModal } from '../components/dms/CreateDocumentModal';
 import { DocumentVersionsModal } from '../components/dms/DocumentVersionsModal';
 import { DocumentPermissionsModal } from '../components/dms/DocumentPermissionsModal';
 import { FilePreviewModal } from '../components/dataroom/FilePreviewModal';
+import { SetPasswordModal } from '../components/dataroom/SetPasswordModal';
 
 export const DocumentListPage: React.FC = () => {
   const { user } = useAuth();
@@ -75,6 +77,8 @@ export const DocumentListPage: React.FC = () => {
   const [permissionDoc, setPermissionDoc] = useState<any | null>(null);
   const [previewFile, setPreviewFile] = useState<any | null>(null);
   const [editingDoc, setEditingDoc] = useState<any | null>(null);
+  const [passwordDoc, setPasswordDoc] = useState<any | null>(null);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   // Dropdown action row
   const [actionMenuOpenId, setActionMenuOpenId] = useState<number | null>(null);
@@ -154,6 +158,24 @@ export const DocumentListPage: React.FC = () => {
   };
 
   const handleDownload = async (doc: any) => {
+    const isOwner = Number(doc.uploadedBy) === Number(user?.id);
+    const isAdmin = (user?.role || '').toUpperCase() === 'ADMIN';
+
+    // Nếu tài liệu có mật mã bảo vệ và không phải tác giả/admin, mở Preview Modal để nhập mật mã tải tệp
+    if (doc.hasPassword && !isOwner && !isAdmin) {
+      setPreviewFile({
+        id: doc.id,
+        name: doc.name,
+        fileName: doc.fileName,
+        extension: doc.fileType,
+        url: `/api/documents/${doc.id}/file`,
+        previewUrl: `/api/documents/${doc.id}/file`,
+        hasPassword: true,
+        isEncrypted: true
+      });
+      return;
+    }
+
     try {
       const res = await api.get(`/documents/${doc.id}/download`, {
         responseType: 'blob'
@@ -167,7 +189,20 @@ export const DocumentListPage: React.FC = () => {
       link.remove();
       toast('success', `Đang tải xuống: ${doc.fileName || doc.name}`);
     } catch (err: any) {
-      toast('error', err.response?.data?.message || 'Lỗi khi tải xuống tài liệu');
+      if (err.response?.status === 401 || err.response?.data?.code === 'PASSWORD_REQUIRED') {
+        setPreviewFile({
+          id: doc.id,
+          name: doc.name,
+          fileName: doc.fileName,
+          extension: doc.fileType,
+          url: `/api/documents/${doc.id}/file`,
+          previewUrl: `/api/documents/${doc.id}/file`,
+          hasPassword: true,
+          isEncrypted: true
+        });
+      } else {
+        toast('error', err.response?.data?.message || 'Lỗi khi tải xuống tài liệu');
+      }
     }
   };
 
@@ -181,7 +216,9 @@ export const DocumentListPage: React.FC = () => {
         fileName: doc.fileName,
         extension: doc.fileType,
         url: `/api/documents/${doc.id}/file`,
-        previewUrl: `/api/documents/${doc.id}/file`
+        previewUrl: `/api/documents/${doc.id}/file`,
+        hasPassword: doc.hasPassword,
+        isEncrypted: doc.hasPassword || doc.isEncrypted
       });
     } catch (err: any) {
       toast('error', 'Lỗi khi chuẩn bị in tài liệu');
@@ -561,7 +598,18 @@ export const DocumentListPage: React.FC = () => {
 
                     {/* Tên tài liệu / Văn bản */}
                     <td className="py-3 px-3.5 min-w-[220px]">
-                      <div className="font-bold text-slate-900 line-clamp-1">{doc.name}</div>
+                      <div className="font-bold text-slate-900 line-clamp-1 flex items-center gap-1.5">
+                        <span className="truncate">{doc.name}</span>
+                        {doc.hasPassword && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shrink-0"
+                            title="Tài liệu được khóa bằng mật khẩu"
+                          >
+                            <Lock className="w-2.5 h-2.5 text-amber-600" />
+                            Khóa mã
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
                         <span className="font-mono text-slate-500">{doc.fileName}</span>
                         {doc.version > 1 && (
@@ -633,7 +681,9 @@ export const DocumentListPage: React.FC = () => {
                             fileName: doc.fileName,
                             extension: doc.fileType,
                             url: `/api/documents/${doc.id}/file`,
-                            previewUrl: `/api/documents/${doc.id}/file`
+                            previewUrl: `/api/documents/${doc.id}/file`,
+                            hasPassword: doc.hasPassword,
+                            isEncrypted: doc.hasPassword || doc.isEncrypted
                           });
                         }}
                         className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
@@ -693,6 +743,21 @@ export const DocumentListPage: React.FC = () => {
                               className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-30 text-left divide-y divide-slate-100"
                             >
                               <div className="py-1">
+                                {(doc.canAdmin || Number(doc.uploadedBy) === Number(user?.id) || user?.role === 'ADMIN') && (
+                                  <button
+                                    onClick={() => {
+                                      setPasswordDoc(doc);
+                                      setIsPasswordModalOpen(true);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50 flex items-center gap-2"
+                                  >
+                                    <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>
+                                      {doc.hasPassword ? 'Đổi / Gỡ mật khẩu' : 'Cài đặt mật khẩu'}
+                                    </span>
+                                  </button>
+                                )}
+
                                 {doc.canAdmin && (
                                   <button
                                     onClick={() => setPermissionDoc(doc)}
@@ -816,6 +881,19 @@ export const DocumentListPage: React.FC = () => {
           isOpen={!!previewFile}
           file={previewFile}
           onClose={() => setPreviewFile(null)}
+        />
+      )}
+
+      {/* Modal Cài đặt / Đổi mật mã bảo vệ */}
+      {isPasswordModalOpen && passwordDoc && (
+        <SetPasswordModal
+          isOpen={isPasswordModalOpen}
+          file={passwordDoc}
+          onClose={() => {
+            setIsPasswordModalOpen(false);
+            setPasswordDoc(null);
+          }}
+          onSuccess={() => fetchDocuments(page)}
         />
       )}
     </div>

@@ -3,6 +3,7 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 const { Readable } = require('stream');
 const { v4: uuidv4 } = require('uuid');
+const bcrypt = require('bcryptjs');
 const cloudinary = require('cloudinary').v2;
 const db = require('../../db');
 const { computeUserDocumentPermission, hasPermission } = require('../../services/permissionService');
@@ -234,6 +235,7 @@ class DmsController {
           d.file_size, d.file_type, d.mime_type, d.version, d.access_level,
           d.contract_number, d.partner_name, d.published_date, d.expiry_date,
           d.status, d.security_level, d.uploaded_by, d.created_at, d.updated_at,
+          d.access_password_hash, d.is_encrypted,
           dt.name as document_type_name, dt.code as document_type_code,
           dep.name as department_name, dep.code as department_code,
           u.full_name as uploader_name, u.username as uploader_username,
@@ -296,6 +298,8 @@ class DmsController {
           uploaderName: doc.uploader_name || doc.uploader_username || 'Chưa rõ',
           createdAt: doc.created_at,
           updatedAt: doc.updated_at,
+          hasPassword: !!doc.access_password_hash,
+          isEncrypted: !!doc.access_password_hash || !!doc.is_encrypted,
           userPermission: perm,
           canView: hasPermission(perm, 'VIEW'),
           canDownload: hasPermission(perm, 'DOWNLOAD'),
@@ -347,8 +351,16 @@ class DmsController {
         expiry_date,
         security_level = 'INTERNAL',
         description,
+        password,
+        access_password,
         initial_permissions // JSON string hoặc Array
       } = req.body;
+
+      const rawPassword = password || access_password;
+      let accessPasswordHash = null;
+      if (rawPassword && String(rawPassword).trim()) {
+        accessPasswordHash = await bcrypt.hash(String(rawPassword).trim(), 10);
+      }
 
       const effectiveFileName = (customFileName && customFileName.trim()) ? customFileName.trim() : originalname;
       const docCode = await generateDocCode();
@@ -363,8 +375,9 @@ class DmsController {
           document_code, name, description, file_name, file_path, file_size, 
           file_type, mime_type, version, document_type_id, department_id, 
           contract_number, partner_name, published_date, expiry_date, 
-          status, security_level, uploaded_by, folder_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, 1)
+          status, security_level, uploaded_by, folder_id,
+          access_password_hash, is_encrypted
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, 1, ?, ?)
       `, [
         docCode,
         name || path.parse(effectiveFileName).name,
@@ -381,7 +394,9 @@ class DmsController {
         published_date || new Date().toISOString().split('T')[0],
         expiry_date || null,
         security_level,
-        req.user?.id || 1
+        req.user?.id || 1,
+        accessPasswordHash,
+        accessPasswordHash ? 1 : 0
       ]);
 
       const docId = insertResult.insertId;
@@ -485,10 +500,16 @@ class DmsController {
       // Increment view_count
       await db.query('UPDATE documents SET view_count = view_count + 1 WHERE id = ?', [id]).catch(() => {});
 
+      const hasPassword = !!doc.access_password_hash;
+      const isEncrypted = !!doc.access_password_hash || !!doc.is_encrypted;
+      delete doc.access_password_hash;
+
       return res.json({
         success: true,
         document: {
           ...doc,
+          hasPassword,
+          isEncrypted,
           userPermission: perm,
           canView: hasPermission(perm, 'VIEW'),
           canDownload: hasPermission(perm, 'DOWNLOAD'),
@@ -560,6 +581,19 @@ class DmsController {
         description !== undefined ? description : doc.description,
         id
       ]);
+
+      const rawPassword = req.body.password !== undefined ? req.body.password : req.body.access_password;
+      if (rawPassword !== undefined) {
+        const canManagePassword = hasPermission(perm, 'ADMIN') || Number(doc.uploaded_by) === Number(req.user?.id);
+        if (canManagePassword) {
+          if (String(rawPassword).trim() === '') {
+            await db.query('UPDATE documents SET access_password_hash = NULL, is_encrypted = 0 WHERE id = ?', [id]);
+          } else {
+            const hash = await bcrypt.hash(String(rawPassword).trim(), 10);
+            await db.query('UPDATE documents SET access_password_hash = ?, is_encrypted = 1 WHERE id = ?', [hash, id]);
+          }
+        }
+      }
 
       await logAuditAction({
         req,
@@ -884,6 +918,18 @@ class DmsController {
     }
   }
 
+  static checkDocumentPassword(doc, req) {
+    if (!doc.access_password_hash) return true;
+    const userId = req.user?.id;
+    const userRole = (req.user?.role || req.user?.role_code || '').toUpperCase();
+    if (userRole === 'ADMIN') return true;
+    if (userId && Number(doc.uploaded_by) === Number(userId)) return true;
+
+    const clientPassword = req.headers['x-document-password'] || req.query.password || req.body?.password;
+    if (!clientPassword) return false;
+    return bcrypt.compareSync(String(clientPassword), doc.access_password_hash);
+  }
+
   /**
    * 11. GET /api/documents/:id/file
    * Xem tệp tin trực tiếp (bảo mật, không bypass URL)
@@ -902,6 +948,16 @@ class DmsController {
       const perm = await computeUserDocumentPermission(req.user, doc);
       if (!hasPermission(perm, 'VIEW')) {
         return res.status(403).send('Từ chối truy cập: Bạn không có quyền xem tệp này');
+      }
+
+      // Kiểm tra mật mã bảo vệ tài liệu
+      if (doc.access_password_hash && !DmsController.checkDocumentPassword(doc, req)) {
+        return res.status(401).json({
+          success: false,
+          code: 'PASSWORD_REQUIRED',
+          isProtected: true,
+          message: req.headers['x-document-password'] ? 'Mật khẩu tài liệu không chính xác' : 'Tài liệu này được bảo vệ bằng mật khẩu. Vui lòng nhập mật khẩu để mở khóa.'
+        });
       }
 
       let filePath = doc.file_path;
@@ -966,6 +1022,16 @@ class DmsController {
       const perm = await computeUserDocumentPermission(req.user, doc);
       if (!hasPermission(perm, 'DOWNLOAD')) {
         return res.status(403).json({ success: false, message: 'Bạn không có quyền tải về tài liệu này' });
+      }
+
+      // Kiểm tra mật mã bảo vệ tài liệu
+      if (doc.access_password_hash && !DmsController.checkDocumentPassword(doc, req)) {
+        return res.status(401).json({
+          success: false,
+          code: 'PASSWORD_REQUIRED',
+          isProtected: true,
+          message: req.headers['x-document-password'] ? 'Mật khẩu tài liệu không chính xác' : 'Tài liệu này được bảo vệ bằng mật khẩu. Vui lòng nhập mật khẩu để mở khóa.'
+        });
       }
 
       let filePath = doc.file_path;
@@ -1147,6 +1213,59 @@ class DmsController {
       });
     } catch (error) {
       console.error('getDashboardStats error:', error);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * 15. POST /api/documents/:id/password
+   * Cài đặt / Đổi / Gỡ mật khẩu bảo vệ tài liệu
+   */
+  static async setPassword(req, res) {
+    try {
+      const { id } = req.params;
+      const [rows] = await db.query('SELECT * FROM documents WHERE id = ? AND deleted_at IS NULL', [id]);
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Tài liệu không tồn tại' });
+      }
+
+      const doc = rows[0];
+      const perm = await computeUserDocumentPermission(req.user, doc);
+      const isOwner = Number(doc.uploaded_by) === Number(req.user?.id);
+      const isAdmin = (req.user?.role || req.user?.role_code || '').toUpperCase() === 'ADMIN' || hasPermission(perm, 'ADMIN');
+
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({
+          success: false,
+          message: 'Chỉ người tải lên tài liệu này hoặc Quản trị viên mới có quyền cài đặt hoặc đổi mật mã bảo vệ.'
+        });
+      }
+
+      const password = req.body.password;
+      if (password && String(password).trim()) {
+        const hash = await bcrypt.hash(String(password).trim(), 10);
+        await db.query('UPDATE documents SET access_password_hash = ?, is_encrypted = 1, updated_at = NOW() WHERE id = ?', [hash, id]);
+        await logAuditAction({
+          req,
+          action: 'CHANGE_PERMISSION',
+          document_id: doc.id,
+          document_title: doc.name,
+          details: { action: 'SET_PASSWORD' }
+        });
+        return res.json({ success: true, message: 'Đã khóa bảo vệ tài liệu bằng mật mã thành công' });
+      } else {
+        await db.query('UPDATE documents SET access_password_hash = NULL, is_encrypted = 0, updated_at = NOW() WHERE id = ?', [id]);
+        await logAuditAction({
+          req,
+          action: 'CHANGE_PERMISSION',
+          document_id: doc.id,
+          document_title: doc.name,
+          details: { action: 'REMOVE_PASSWORD' }
+        });
+        return res.json({ success: true, message: 'Đã gỡ bỏ mật mã bảo vệ tài liệu' });
+      }
+    } catch (error) {
+      console.error('setPassword error:', error);
       return res.status(500).json({ success: false, message: error.message });
     }
   }
