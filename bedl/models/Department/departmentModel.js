@@ -5,12 +5,15 @@ const DepartmentModel = {
         try {
             const offset = (page - 1) * limit;
             const [rows] = await db.query(
-                'SELECT * FROM departments WHERE is_active = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?',
+                `SELECT d.*, (SELECT COUNT(*) FROM users u WHERE u.department_id = d.id) as member_count 
+                 FROM departments d 
+                 ORDER BY d.is_active DESC, d.name ASC 
+                 LIMIT ? OFFSET ?`,
                 [limit, offset]
             );
 
             const [countRows] = await db.query(
-                'SELECT COUNT(*) as total FROM departments WHERE is_active = 1'
+                'SELECT COUNT(*) as total FROM departments'
             );
 
             return {

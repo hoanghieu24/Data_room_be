@@ -5,6 +5,7 @@ const DepartmentController = require('../../controllers/Department/departmentCon
 router.get('/search', DepartmentController.searchDepartments);
 router.get('/', DepartmentController.getAllDepartments);
 router.get('/:id', DepartmentController.getDepartmentById);
+router.get('/:id/members', DepartmentController.getDepartmentMembers);
 router.post('/', DepartmentController.createDepartment);
 router.put('/:id', DepartmentController.updateDepartment);
 router.delete('/:id', DepartmentController.deleteDepartment);

@@ -13,6 +13,9 @@ import { SettingsPage } from './pages/SettingsPage';
 import { UsersPage } from './pages/UsersPage';
 import { LoginPage } from './pages/LoginPage';
 import { SystemOverviewPage } from './pages/SystemOverviewPage';
+import { DocumentListPage } from './pages/DocumentListPage';
+import { DepartmentsPage } from './pages/DepartmentsPage';
+import { DocumentTypesPage } from './pages/DocumentTypesPage';
 
 const ProtectedLayout: React.FC = () => {
   const { user, loading } = useAuth();
@@ -46,6 +49,9 @@ const ProtectedLayout: React.FC = () => {
         <main className="flex-1 min-w-0 overflow-x-hidden">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/documents" element={<DocumentListPage />} />
+            <Route path="/departments" element={<DepartmentsPage />} />
+            <Route path="/document-types" element={<DocumentTypesPage />} />
             <Route path="/system-overview" element={<SystemOverviewPage />} />
             <Route path="/dataroom" element={<DataRoomPage />} />
             <Route path="/users" element={<UsersPage />} />

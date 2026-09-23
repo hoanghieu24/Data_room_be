@@ -5,7 +5,7 @@ echo   CRM & DATA ROOM ENTERPRISE SYSTEM v2 (Cloudinary)
 echo ======================================================
 echo.
 echo Đang khởi động Backend API (Port 5000)...
-start "Backend Server (Port 5000)" cmd /k "cd server && npm run dev"
+start "Backend Server (Port 5000)" cmd /k "cd bedl && npm run dev"
 
 timeout /t 3 /nobreak > nul
 

@@ -1,49 +1,89 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../../db');
-const { optionalAuthenticate } = require('../../middlewares/authMiddleware');
+const { authenticate } = require('../../middlewares/authMiddleware');
 
-router.get('/', optionalAuthenticate, async (req, res) => {
-    try {
-        const page = parseInt(req.query.page, 10) || 1;
-        const limit = parseInt(req.query.limit, 10) || 20;
-        const offset = (page - 1) * limit;
+router.use(authenticate);
 
-        const [rows] = await db.query(
-            `SELECT l.id, l.action, l.ip_address, l.user_agent, l.accessed_at as timestamp,
-                    u.username as user_name, u.email as user_email,
-                    d.name as document_name, d.file_name
-             FROM document_access_logs l
-             LEFT JOIN users u ON u.id = l.user_id
-             LEFT JOIN documents d ON d.id = l.document_id
-             ORDER BY l.accessed_at DESC
-             LIMIT ? OFFSET ?`,
-            [limit, offset]
-        );
+router.get('/', async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit, 10) || 20);
+    const offset = (page - 1) * limit;
 
-        const [countRow] = await db.query(`SELECT COUNT(*) as total FROM document_access_logs`);
+    const { action, search, startDate, endDate } = req.query;
+    const whereConditions = [];
+    const params = [];
 
-        res.json({
-            success: true,
-            logs: rows.map(r => ({
-                id: r.id,
-                action: r.action,
-                userName: r.user_name || r.user_email || 'System',
-                documentName: r.document_name || r.file_name || 'N/A',
-                ipAddress: r.ip_address,
-                timestamp: r.timestamp
-            })),
-            pagination: {
-                page,
-                limit,
-                total: countRow[0]?.total || 0,
-                totalPages: Math.ceil((countRow[0]?.total || 0) / limit)
-            }
-        });
-    } catch (error) {
-        console.error('Audit logs error:', error);
-        res.status(500).json({ success: false, message: error.message });
+    // Lọc theo Action
+    if (action && action !== 'ALL') {
+      whereConditions.push('a.action = ?');
+      params.push(action);
     }
+
+    // Lọc theo từ khóa (User, Document Title, IP)
+    if (search && search.trim()) {
+      whereConditions.push('(a.user_name LIKE ? OR a.document_title LIKE ? OR a.ip_address LIKE ?)');
+      const p = `%${search.trim()}%`;
+      params.push(p, p, p);
+    }
+
+    // Lọc theo khoảng thời gian
+    if (startDate) {
+      whereConditions.push('a.created_at >= ?');
+      params.push(`${startDate} 00:00:00`);
+    }
+    if (endDate) {
+      whereConditions.push('a.created_at <= ?');
+      params.push(`${endDate} 23:59:59`);
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    // Đếm tổng số log
+    const [countResult] = await db.query(
+      `SELECT COUNT(*) as total FROM audit_logs a ${whereClause}`,
+      params
+    );
+    const total = countResult[0]?.total || 0;
+
+    // Lấy danh sách log
+    const [rows] = await db.query(
+      `SELECT a.id, a.user_id, a.user_name, a.action, a.document_id, a.document_title,
+              a.ip_address, a.user_agent, a.status, a.details, a.created_at as timestamp
+       FROM audit_logs a
+       ${whereClause}
+       ORDER BY a.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      success: true,
+      logs: rows.map(r => ({
+        id: r.id,
+        userId: r.user_id,
+        userName: r.user_name || 'Hệ thống',
+        action: r.action,
+        documentId: r.document_id,
+        documentName: r.document_title || 'N/A',
+        ipAddress: r.ip_address || '127.0.0.1',
+        userAgent: r.user_agent,
+        status: r.status,
+        details: r.details ? (typeof r.details === 'string' ? JSON.parse(r.details) : r.details) : null,
+        timestamp: r.timestamp
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Audit logs error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 module.exports = router;

@@ -175,6 +175,112 @@ export const SettingsPage: React.FC = () => {
           </div>
         </form>
       </div>
+
+      {/* DMS Configuration Card */}
+      <DmsSettingsSection user={user} />
     </div>
   );
 };
+
+const DmsSettingsSection: React.FC<{ user: any }> = ({ user }) => {
+  const { toast } = useToast();
+  const [warningDays, setWarningDays] = useState(30);
+  const [namingRule, setNamingRule] = useState('[DATE]_[TYPE]_[PARTNER]_[VERSION]');
+  const [savingDms, setSavingDms] = useState(false);
+
+  useEffect(() => {
+    api.get('/settings/dms').then(res => {
+      if (res.data.success) {
+        setWarningDays(res.data.settings.expiryWarningDays || 30);
+        setNamingRule(res.data.settings.fileNamingRule || '[DATE]_[TYPE]_[PARTNER]_[VERSION]');
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleSaveDms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (user?.role !== 'admin') {
+      toast('error', 'Chỉ Quản trị viên mới được điều chỉnh cấu hình hệ thống');
+      return;
+    }
+
+    setSavingDms(true);
+    try {
+      const res = await api.put('/settings/dms', {
+        expiryWarningDays: Number(warningDays),
+        fileNamingRule: namingRule.trim()
+      });
+      if (res.data.success) {
+        toast('success', 'Đã lưu cấu hình DMS thành công!');
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Lỗi khi lưu cấu hình DMS');
+    } finally {
+      setSavingDms(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-4">
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+          <Shield className="w-4 h-4" />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-slate-800">Cấu Hình Nghiệp Vụ DMS (Tài Liệu)</h3>
+          <p className="text-xs text-slate-400">Điều chỉnh chu kỳ cảnh báo tài liệu sắp hết hạn và quy tắc chuẩn hóa</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSaveDms} className="space-y-4 text-xs">
+        <div>
+          <label className="block font-semibold text-slate-700 mb-1">
+            Số ngày cảnh báo "Sắp hết hạn" (Mặc định: 30 ngày)
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={365}
+              required
+              value={warningDays}
+              onChange={(e) => setWarningDays(Number(e.target.value))}
+              className="w-40 px-3 py-2 border border-slate-300 rounded-xl font-bold text-slate-800"
+            />
+            <span className="text-slate-500 font-medium">ngày trước khi tài liệu hết hiệu lực</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Tất cả tài liệu có thời hạn nằm trong khoảng này sẽ tự động chuyển trạng thái "Sắp hết hạn" và kích hoạt thông báo.
+          </p>
+        </div>
+
+        <div>
+          <label className="block font-semibold text-slate-700 mb-1">
+            Mẫu quy tắc đặt tên tệp tin (File Naming Template)
+          </label>
+          <input
+            type="text"
+            required
+            value={namingRule}
+            onChange={(e) => setNamingRule(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-slate-700"
+          />
+          <p className="text-[11px] text-slate-400 mt-1">
+            Các thẻ hợp lệ: [DATE], [TYPE], [PARTNER], [VERSION] (VD: 23-09-2026_HOP-DONG_Cong-Ty-ABC_V1.pdf)
+          </p>
+        </div>
+
+        <div className="pt-2 flex justify-end">
+          <button
+            type="submit"
+            disabled={savingDms}
+            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-sm transition-colors cursor-pointer"
+          >
+            {savingDms ? 'Đang lưu...' : 'Lưu cấu hình DMS'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+

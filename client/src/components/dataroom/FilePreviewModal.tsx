@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Download,
+  Printer,
   ShieldCheck,
   FileText,
   Table,
@@ -311,6 +312,17 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
     }
   };
 
+  const handlePrintAction = async () => {
+    try {
+      if (file?.id) {
+        await api.post(`/documents/${file.id}/print`).catch(() => {});
+      }
+      window.print();
+    } catch (e) {
+      window.print();
+    }
+  };
+
   if (!isOpen || !file) return null;
 
   return (
@@ -335,6 +347,15 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {!passwordRequired && (
+              <button
+                onClick={handlePrintAction}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors border border-slate-300 shadow-xs cursor-pointer"
+                title="In tài liệu"
+              >
+                <Printer className="w-4 h-4" /> In tài liệu
+              </button>
+            )}
             {!passwordRequired && file.permissions?.canDownload !== false && (
               <button
                 onClick={handleDownloadAction}

@@ -163,6 +163,30 @@ const DepartmentController = {
                 message: error.message
             });
         }
+    },
+
+    getDepartmentMembers: async (req, res) => {
+        try {
+            const id = parseId(req.params.id);
+            const db = require('../../db');
+            const [members] = await db.query(
+                `SELECT u.id, u.username, u.email, u.full_name, u.phone, u.status, u.is_active, 
+                        r.code as role_code, r.name as role_name
+                 FROM users u
+                 LEFT JOIN user_role ur ON ur.user_id = u.id
+                 LEFT JOIN roles r ON r.id = ur.role_id
+                 WHERE u.department_id = ?
+                 ORDER BY u.full_name ASC`,
+                [id]
+            );
+            res.json({
+                success: true,
+                members
+            });
+        } catch (error) {
+            console.error('Error in getDepartmentMembers:', error);
+            res.status(500).json({ success: false, message: error.message });
+        }
     }
 };
 

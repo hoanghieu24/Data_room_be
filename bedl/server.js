@@ -27,6 +27,9 @@ const crmRoutes = require("./routes/crm/crmRoutes");
 const auditLogRoutes = require("./routes/auditLogs/auditLogRoutes");
 const notificationRoutes = require("./routes/notifications/notificationRoutes");
 const settingsRoutes = require("./routes/settings/settingsRoutes");
+const documentTypeRoutes = require("./routes/documentTypes/documentTypeRoutes");
+const db = require("./db");
+const { runDmsMigration } = require("./services/dmsMigration");
 
 const app = express();
 
@@ -81,6 +84,7 @@ app.use("/api/crm", crmRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/document-types", documentTypeRoutes);
 
 const uploadDir = process.env.UPLOAD_DIR || "./uploads";
 const uploadDocumentsDir = path.join(uploadDir, "documents");
@@ -111,7 +115,14 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Server is running on port ${PORT}`);
+  // Tự động kiểm tra và chạy migration schema cho DMS
+  try {
+    await runDmsMigration(db);
+  } catch (migErr) {
+    console.warn("Migration warning:", migErr.message);
+  }
 });
+

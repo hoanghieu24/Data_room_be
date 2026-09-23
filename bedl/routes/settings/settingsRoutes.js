@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const cloudinary = require('cloudinary').v2;
-const { optionalAuthenticate } = require('../../middlewares/authMiddleware');
+const db = require('../../db');
+const { optionalAuthenticate, authenticate, authorize } = require('../../middlewares/authMiddleware');
 
 router.get('/cloudinary', optionalAuthenticate, async (req, res) => {
     try {
@@ -40,6 +41,53 @@ router.post('/cloudinary', optionalAuthenticate, async (req, res) => {
             }
         }
         res.status(400).json({ success: false, message: 'Thông tin kết nối không hợp lệ' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// DMS settings
+router.get('/dms', optionalAuthenticate, async (req, res) => {
+    try {
+        const [rows] = await db.query(
+            "SELECT setting_key, setting_value FROM system_settings WHERE category = 'dms'"
+        );
+        const settings = {};
+        rows.forEach(r => {
+            settings[r.setting_key] = r.setting_value;
+        });
+
+        res.json({
+            success: true,
+            settings: {
+                expiryWarningDays: parseInt(settings.EXPIRY_WARNING_DAYS, 10) || 30,
+                fileNamingRule: settings.NAMING_CONVENTION_TEMPLATE || '[DATE]_[TYPE]_[PARTNER]_[VERSION]'
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+router.put('/dms', authenticate, authorize('ADMIN'), async (req, res) => {
+    try {
+        const { expiryWarningDays, fileNamingRule } = req.body;
+
+        if (expiryWarningDays !== undefined) {
+            await db.query(
+                "UPDATE system_settings SET setting_value = ? WHERE setting_key = 'EXPIRY_WARNING_DAYS'",
+                [String(expiryWarningDays)]
+            );
+        }
+
+        if (fileNamingRule !== undefined) {
+            await db.query(
+                "UPDATE system_settings SET setting_value = ? WHERE setting_key = 'NAMING_CONVENTION_TEMPLATE'",
+                [String(fileNamingRule)]
+            );
+        }
+
+        res.json({ success: true, message: 'Lưu cấu hình DMS thành công' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
