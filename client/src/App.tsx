@@ -53,7 +53,7 @@ const ProtectedLayout: React.FC = () => {
             <Route path="/departments" element={<DepartmentsPage />} />
             <Route path="/document-types" element={<DocumentTypesPage />} />
             <Route path="/system-overview" element={<SystemOverviewPage />} />
-            <Route path="/dataroom" element={<DataRoomPage />} />
+            <Route path="/dataroom" element={<Navigate to="/documents" replace />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/crm" element={<CrmPage />} />
             <Route path="/recycle-bin" element={<RecycleBinPage />} />

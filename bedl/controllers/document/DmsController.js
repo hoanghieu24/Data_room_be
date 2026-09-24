@@ -118,6 +118,8 @@ class DmsController {
         dateType, // 'published_date' hoặc 'expiry_date'
         startDate,
         endDate,
+        folder_id,
+        folderId,
         sortBy = 'created_at',
         sortOrder = 'desc',
         page = 1,
@@ -131,6 +133,13 @@ class DmsController {
       const keyword = (search || q || '').trim();
       const whereConditions = ['d.deleted_at IS NULL'];
       const params = [];
+
+      // Bộ lọc theo Thư mục
+      const targetFolderId = folder_id || folderId;
+      if (targetFolderId && targetFolderId !== 'all') {
+        whereConditions.push('d.folder_id = ?');
+        params.push(Number(targetFolderId));
+      }
 
       // Bộ lọc từ khóa
       if (keyword) {
@@ -235,12 +244,14 @@ class DmsController {
           d.file_size, d.file_type, d.mime_type, d.version, d.access_level,
           d.contract_number, d.partner_name, d.published_date, d.expiry_date,
           d.status, d.security_level, d.uploaded_by, d.created_at, d.updated_at,
-          d.access_password_hash, d.is_encrypted,
+          d.access_password_hash, d.is_encrypted, d.folder_id,
+          f.name as folder_name,
           dt.name as document_type_name, dt.code as document_type_code,
           dep.name as department_name, dep.code as department_code,
           u.full_name as uploader_name, u.username as uploader_username,
           DATEDIFF(d.expiry_date, CURDATE()) as days_until_expiry
         FROM documents d
+        LEFT JOIN folders f ON f.id = d.folder_id
         LEFT JOIN document_types dt ON dt.id = d.document_type_id
         LEFT JOIN departments dep ON dep.id = d.department_id
         LEFT JOIN users u ON u.id = d.uploaded_by
@@ -294,6 +305,8 @@ class DmsController {
           documentTypeName: doc.document_type_name || 'Khác',
           departmentId: doc.department_id,
           departmentName: doc.department_name || 'Toàn công ty',
+          folderId: doc.folder_id,
+          folderName: doc.folder_name || 'Thư mục gốc',
           uploadedBy: doc.uploaded_by,
           uploaderName: doc.uploader_name || doc.uploader_username || 'Chưa rõ',
           createdAt: doc.created_at,
@@ -351,10 +364,15 @@ class DmsController {
         expiry_date,
         security_level = 'INTERNAL',
         description,
+        folder_id,
+        folderId,
         password,
         access_password,
         initial_permissions // JSON string hoặc Array
       } = req.body;
+
+      const rawFolderId = folder_id || folderId;
+      const targetFolderId = rawFolderId ? Number(rawFolderId) : 1;
 
       const rawPassword = password || access_password;
       let accessPasswordHash = null;
@@ -377,7 +395,7 @@ class DmsController {
           contract_number, partner_name, published_date, expiry_date, 
           status, security_level, uploaded_by, folder_id,
           access_password_hash, is_encrypted
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, 1, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
       `, [
         docCode,
         name || path.parse(effectiveFileName).name,
@@ -395,6 +413,7 @@ class DmsController {
         expiry_date || null,
         security_level,
         req.user?.id || 1,
+        targetFolderId,
         accessPasswordHash,
         accessPasswordHash ? 1 : 0
       ]);
@@ -545,6 +564,8 @@ class DmsController {
         name,
         document_type_id,
         department_id,
+        folder_id,
+        folderId,
         contract_number,
         partner_name,
         published_date,
@@ -554,11 +575,14 @@ class DmsController {
         description
       } = req.body;
 
+      const targetFolderId = folder_id !== undefined ? (folder_id ? Number(folder_id) : null) : (folderId !== undefined ? (folderId ? Number(folderId) : null) : doc.folder_id);
+
       await db.query(`
         UPDATE documents SET
           name = COALESCE(?, name),
           document_type_id = COALESCE(?, document_type_id),
           department_id = ?,
+          folder_id = ?,
           contract_number = ?,
           partner_name = ?,
           published_date = COALESCE(?, published_date),
@@ -572,6 +596,7 @@ class DmsController {
         name,
         document_type_id,
         department_id !== undefined ? department_id : doc.department_id,
+        targetFolderId,
         contract_number !== undefined ? contract_number : doc.contract_number,
         partner_name !== undefined ? partner_name : doc.partner_name,
         published_date,

@@ -130,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
             <span>Dashboard (Tổng quan)</span>
           </NavLink>
 
-          {/* Module 1: Tài liệu (DMS Hub) */}
+          {/* Module 1: Quản lý Tài liệu & Data Room */}
           <div className="pt-2">
             <div
               onClick={() => setDocMenuOpen(!docMenuOpen)}
@@ -138,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
             >
               <div className="flex items-center gap-2">
                 <FileText className="w-3.5 h-3.5 text-blue-400" />
-                <span>Tài liệu (DMS)</span>
+                <span>Tài liệu & Data Room</span>
               </div>
               {docMenuOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             </div>
@@ -157,8 +157,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
                     }`
                   }
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                  <span>Tất cả tài liệu</span>
+                  <FolderLock className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Tất cả tài liệu & Thư mục</span>
                 </NavLink>
 
                 <NavLink
@@ -205,59 +205,62 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
                   <Archive className="w-3.5 h-3.5" />
                   <span>Đã nghiệm thu / Thanh lý</span>
                 </NavLink>
+
+                <NavLink
+                  to="/recycle-bin"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors ${
+                      isActive
+                        ? 'bg-rose-600 text-white font-bold shadow-xs'
+                        : 'text-rose-400/90 hover:text-rose-300 hover:bg-slate-800/50'
+                    }`
+                  }
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Thùng rác</span>
+                </NavLink>
               </div>
             )}
           </div>
 
-          {/* Module: Phòng ban */}
-          <NavLink
-            to="/departments"
-            onClick={onClose}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-xl font-medium transition-colors ${
-                isActive
-                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
-              }`
-            }
-          >
-            <Building2 className="w-4 h-4 text-cyan-400" />
-            <span>Phòng ban</span>
-          </NavLink>
+          {/* Module: Danh mục & Phân loại */}
+          <div className="pt-2">
+            <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Phân loại & Tổ chức
+            </div>
+            <NavLink
+              to="/departments"
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-xl font-medium transition-colors ${
+                  isActive
+                    ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+                }`
+              }
+            >
+              <Building2 className="w-4 h-4 text-cyan-400" />
+              <span>Phòng ban</span>
+            </NavLink>
 
-          {/* Module: Loại tài liệu */}
-          <NavLink
-            to="/document-types"
-            onClick={onClose}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-xl font-medium transition-colors ${
-                isActive
-                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
-              }`
-            }
-          >
-            <Tag className="w-4 h-4 text-emerald-400" />
-            <span>Loại tài liệu</span>
-          </NavLink>
+            <NavLink
+              to="/document-types"
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-xl font-medium transition-colors ${
+                  isActive
+                    ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+                }`
+              }
+            >
+              <Tag className="w-4 h-4 text-emerald-400" />
+              <span>Loại tài liệu</span>
+            </NavLink>
+          </div>
 
-          {/* Module: Audit Log */}
-          <NavLink
-            to="/audit-logs"
-            onClick={onClose}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-xl font-medium transition-colors ${
-                isActive
-                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
-              }`
-            }
-          >
-            <History className="w-4 h-4 text-amber-400" />
-            <span>Nhật ký Audit Log</span>
-          </NavLink>
-
-          {/* Module: Quản trị (Admin Section) */}
+          {/* Module: Quản trị & Bảo mật */}
           <div className="pt-2">
             <div
               onClick={() => setAdminMenuOpen(!adminMenuOpen)}
@@ -265,7 +268,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
             >
               <div className="flex items-center gap-2">
                 <Shield className="w-3.5 h-3.5 text-purple-400" />
-                <span>Quản trị hệ thống</span>
+                <span>Quản trị & Bảo mật</span>
               </div>
               {adminMenuOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             </div>
@@ -283,12 +286,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
                     }`
                   }
                 >
-                  <UserCog className="w-3.5 h-3.5" />
-                  <span>Người dùng</span>
+                  <UserCog className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Quản lý Người dùng</span>
                 </NavLink>
 
                 <NavLink
-                  to="/departments"
+                  to="/audit-logs"
                   onClick={onClose}
                   className={({ isActive }) =>
                     `flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors ${
@@ -298,8 +301,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
                     }`
                   }
                 >
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span>Phòng ban</span>
+                  <History className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Nhật ký Audit Log</span>
                 </NavLink>
 
                 <NavLink
@@ -313,14 +316,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
                     }`
                   }
                 >
-                  <Settings className="w-3.5 h-3.5" />
+                  <Settings className="w-3.5 h-3.5 text-slate-400" />
                   <span>Cấu hình & Cảnh báo</span>
                 </NavLink>
               </div>
             )}
           </div>
 
-          {/* Khu vực Tương Thích CRM & Data Room Cũ */}
+          {/* Module: CRM Khách hàng */}
           <div className="pt-2">
             <div
               onClick={() => setCrmMenuOpen(!crmMenuOpen)}
@@ -328,7 +331,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
             >
               <div className="flex items-center gap-2">
                 <Briefcase className="w-3.5 h-3.5 text-cyan-500" />
-                <span>CRM & Data Room cũ</span>
+                <span>Khách hàng CRM</span>
               </div>
               {crmMenuOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             </div>
@@ -346,38 +349,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
                     }`
                   }
                 >
-                  <Briefcase className="w-3.5 h-3.5" />
-                  <span>Khách hàng & Deals CRM</span>
-                </NavLink>
-
-                <NavLink
-                  to="/dataroom"
-                  onClick={onClose}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors ${
-                      isActive
-                        ? 'bg-blue-600 text-white font-bold shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                    }`
-                  }
-                >
-                  <FolderLock className="w-3.5 h-3.5" />
-                  <span>Cây Thư Mục Data Room</span>
-                </NavLink>
-
-                <NavLink
-                  to="/recycle-bin"
-                  onClick={onClose}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors ${
-                      isActive
-                        ? 'bg-blue-600 text-white font-bold shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                    }`
-                  }
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Thùng rác</span>
+                  <Briefcase className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Khách hàng & Deals</span>
                 </NavLink>
 
                 <NavLink
@@ -391,8 +364,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
                     }`
                   }
                 >
-                  <Network className="w-3.5 h-3.5" />
-                  <span>Sơ đồ Tech Map</span>
+                  <Network className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Sơ đồ hệ thống</span>
                 </NavLink>
               </div>
             )}

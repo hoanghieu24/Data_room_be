@@ -15,7 +15,8 @@ import {
   Lock,
   KeyRound,
   Eye,
-  EyeOff
+  EyeOff,
+  Folder
 } from 'lucide-react';
 import api from '../../services/api';
 import { useToast } from '../../context/ToastContext';
@@ -24,18 +25,22 @@ interface CreateDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialFolderId?: number | string | null;
 }
 
 export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   isOpen,
   onClose,
-  onSuccess
+  onSuccess,
+  initialFolderId
 }) => {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
+  const [folderId, setFolderId] = useState<number | ''>(initialFolderId ? Number(initialFolderId) : '');
+  const [folders, setFolders] = useState<any[]>([]);
   const [documentTypeId, setDocumentTypeId] = useState<number | ''>('');
   const [departmentId, setDepartmentId] = useState<number | ''>('');
   const [contractNumber, setContractNumber] = useState('');
@@ -86,8 +91,14 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       api.get('/users').then(res => {
         if (res.data.success) setUsers(res.data.users || []);
       }).catch(() => {});
+
+      api.get('/folders').then(res => {
+        if (res.data.success) setFolders(res.data.data || []);
+      }).catch(() => {});
+
+      setFolderId(initialFolderId ? Number(initialFolderId) : '');
     }
-  }, [isOpen]);
+  }, [isOpen, initialFolderId]);
 
   // Tự động sinh tên file chuẩn theo quy tắc: [Ngày/Năm]_[Loại_Tài_Liệu]_[Tên_Đối_Tác/Nội_Dung]_[Phiên_Bản]
   useEffect(() => {
@@ -206,6 +217,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       formData.append('customFileName', customFileName.trim() || file.name);
       if (documentTypeId) formData.append('document_type_id', String(documentTypeId));
       if (departmentId) formData.append('department_id', String(departmentId));
+      if (folderId) formData.append('folder_id', String(folderId));
       if (contractNumber) formData.append('contract_number', contractNumber.trim());
       if (partnerName) formData.append('partner_name', partnerName.trim());
       if (publishedDate) formData.append('published_date', publishedDate);
@@ -388,6 +400,25 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name} ({d.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Thư mục lưu trữ (Data Room) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                <Folder className="w-3.5 h-3.5 text-amber-500" /> Thư mục Data Room
+              </label>
+              <select
+                value={folderId}
+                onChange={(e) => setFolderId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+              >
+                <option value="">-- Thư mục gốc (Root) --</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    📁 {f.name}
                   </option>
                 ))}
               </select>
