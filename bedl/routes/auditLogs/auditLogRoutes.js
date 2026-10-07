@@ -11,7 +11,7 @@ router.get('/', async (req, res) => {
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 20);
     const offset = (page - 1) * limit;
 
-    const { action, search, startDate, endDate } = req.query;
+    const { action, search, startDate, endDate, status } = req.query;
     const whereConditions = [];
     const params = [];
 
@@ -19,6 +19,12 @@ router.get('/', async (req, res) => {
     if (action && action !== 'ALL') {
       whereConditions.push('a.action = ?');
       params.push(action);
+    }
+
+    // Lọc theo Status
+    if (status && status !== 'ALL') {
+      whereConditions.push('a.status = ?');
+      params.push(status);
     }
 
     // Lọc theo từ khóa (User, Document Title, IP)
@@ -60,19 +66,41 @@ router.get('/', async (req, res) => {
 
     res.json({
       success: true,
-      logs: rows.map(r => ({
-        id: r.id,
-        userId: r.user_id,
-        userName: r.user_name || 'Hệ thống',
-        action: r.action,
-        documentId: r.document_id,
-        documentName: r.document_title || 'N/A',
-        ipAddress: r.ip_address || '127.0.0.1',
-        userAgent: r.user_agent,
-        status: r.status,
-        details: r.details ? (typeof r.details === 'string' ? JSON.parse(r.details) : r.details) : null,
-        timestamp: r.timestamp
-      })),
+      logs: rows.map(r => {
+        let parsedDetails = null;
+        if (r.details) {
+          if (typeof r.details === 'string') {
+            try {
+              parsedDetails = JSON.parse(r.details);
+            } catch {
+              parsedDetails = r.details;
+            }
+          } else {
+            parsedDetails = r.details;
+          }
+        }
+
+        return {
+          id: r.id,
+          userId: r.user_id,
+          userName: r.user_name || 'Hệ thống',
+          user: {
+            id: r.user_id,
+            fullName: r.user_name || 'Hệ thống',
+            username: r.user_name || 'system'
+          },
+          action: r.action,
+          documentId: r.document_id,
+          documentName: r.document_title || 'N/A',
+          file: r.document_title ? { id: r.document_id, name: r.document_title } : null,
+          ipAddress: r.ip_address || '127.0.0.1',
+          userAgent: r.user_agent,
+          status: r.status || 'SUCCESS',
+          details: parsedDetails,
+          timestamp: r.timestamp,
+          createdAt: r.timestamp
+        };
+      }),
       pagination: {
         page,
         limit,
@@ -82,6 +110,35 @@ router.get('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Audit logs error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Thống kê nhanh Audit Logs
+router.get('/stats', async (req, res) => {
+  try {
+    const [totalRows] = await db.query('SELECT COUNT(*) as count FROM audit_logs');
+    const [todayRows] = await db.query(
+      'SELECT COUNT(*) as count FROM audit_logs WHERE DATE(created_at) = CURDATE()'
+    );
+    const [userRows] = await db.query(
+      'SELECT COUNT(DISTINCT user_name) as count FROM audit_logs WHERE user_name IS NOT NULL'
+    );
+    const [actionBreakdown] = await db.query(
+      'SELECT action, COUNT(*) as count FROM audit_logs GROUP BY action ORDER BY count DESC LIMIT 6'
+    );
+
+    res.json({
+      success: true,
+      stats: {
+        totalLogs: totalRows[0]?.count || 0,
+        todayLogs: todayRows[0]?.count || 0,
+        activeUsers: userRows[0]?.count || 0,
+        actionBreakdown: actionBreakdown || []
+      }
+    });
+  } catch (error) {
+    console.error('Audit logs stats error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

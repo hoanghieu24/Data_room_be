@@ -377,11 +377,11 @@ export const SystemOverviewPage: React.FC = () => {
           {/* Brand & Breadcrumbs */}
           <div className="flex items-center gap-4">
             <Link
-              to="/dataroom"
+              to="/documents"
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-700/50 text-cyan-300 hover:bg-cyan-900/50 hover:text-white transition-all text-sm font-medium shadow-sm"
             >
               <ArrowRight className="w-4 h-4 rotate-180" />
-              <span>Quay lại Data Room</span>
+              <span>Quay lại Kho tài liệu</span>
             </Link>
 
             <div className="h-5 w-px bg-cyan-800/60 hidden sm:block"></div>

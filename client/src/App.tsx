@@ -23,8 +23,9 @@ const ProtectedLayout: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 text-xs font-semibold text-slate-500">
-        Đang khởi động hệ thống KTS CRM...
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-xs font-semibold text-slate-500 gap-3">
+        <div className="w-7 h-7 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <span>Đang kết nối hệ thống Data Room...</span>
       </div>
     );
   }

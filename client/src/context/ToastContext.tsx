@@ -3,12 +3,12 @@ import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 interface Toast {
   id: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'warning';
   message: string;
 }
 
 interface ToastContextType {
-  toast: (type: 'success' | 'error' | 'info', message: string) => void;
+  toast: (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -16,7 +16,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const toast = (type: 'success' | 'error' | 'info', message: string) => {
+  const toast = (type: 'success' | 'error' | 'info' | 'warning', message: string) => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, type, message }]);
     setTimeout(() => {
@@ -40,12 +40,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                 : t.type === 'error'
                 ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : t.type === 'warning'
+                ? 'bg-amber-50 border-amber-200 text-amber-800'
                 : 'bg-blue-50 border-blue-200 text-blue-800'
             }`}
           >
             <div className="flex items-center gap-2.5">
               {t.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />}
               {t.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />}
+              {t.type === 'warning' && <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />}
               {t.type === 'info' && <Info className="w-5 h-5 text-blue-600 flex-shrink-0" />}
               <span>{t.message}</span>
             </div>

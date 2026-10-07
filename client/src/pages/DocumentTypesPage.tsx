@@ -7,7 +7,6 @@ import {
   X,
   Search,
   CheckCircle2,
-  AlertCircle
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -104,7 +103,7 @@ export const DocumentTypesPage: React.FC = () => {
     try {
       const res = await api.delete(`/document-types/${t.id}`);
       if (res.data.success) {
-        toast('success', res.data.message || 'Xóa loại tài liệu thành công');
+        toast('success', 'Xóa loại tài liệu thành công');
         fetchTypes();
       }
     } catch (err: any) {
@@ -119,43 +118,44 @@ export const DocumentTypesPage: React.FC = () => {
   );
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 lg:p-6 space-y-5 max-w-7xl mx-auto">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <Tag className="w-6 h-6 text-indigo-600" />
-            Quản Lý Phân Loại Tài Liệu
+          <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <Tag className="w-5 h-5 text-blue-600" />
+            Loại Tài Liệu & Phân Loại
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Danh mục các loại văn bản, hồ sơ doanh nghiệp (Hợp đồng, Quyết định, Báo giá...)
+          <p className="text-xs text-slate-500 mt-0.5">
+            Danh mục các loại văn bản, hồ sơ hợp đồng và quy tắc phân loại trong hệ thống
           </p>
         </div>
 
         <button
           onClick={handleOpenCreate}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer shrink-0"
         >
-          <Plus className="w-4 h-4" /> Thêm loại tài liệu
+          <Plus className="w-4 h-4" />
+          <span>Thêm loại tài liệu</span>
         </button>
       </div>
 
       {/* Search */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+      <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm kiếm theo mã hoặc tên loại tài liệu..."
-            className="w-full text-xs pl-10 pr-4 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            placeholder="Tìm theo mã hoặc tên loại tài liệu..."
+            className="w-full text-xs pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50"
           />
         </div>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         {loading ? (
           <div className="py-20 text-center text-xs text-slate-400">Đang tải danh mục...</div>
         ) : filtered.length === 0 ? (
@@ -163,43 +163,43 @@ export const DocumentTypesPage: React.FC = () => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 text-[11px] font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">
+              <thead className="bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
                 <tr>
                   <th className="py-3 px-4">Mã phân loại</th>
                   <th className="py-3 px-4">Tên loại tài liệu</th>
-                  <th className="py-3 px-4">Mô tả / Ý nghĩa</th>
+                  <th className="py-3 px-4">Mô tả</th>
                   <th className="py-3 px-4">Trạng thái</th>
                   <th className="py-3 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold text-indigo-700">
+                  <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="py-3 px-4 font-mono font-semibold text-blue-600">
                       {t.code}
                     </td>
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
+                    <td className="py-3 px-4 font-semibold text-slate-900">
                       {t.name}
                     </td>
-                    <td className="py-3.5 px-4 text-slate-500 max-w-md">
+                    <td className="py-3 px-4 text-slate-500 max-w-md">
                       {t.description || '—'}
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-3 px-4">
                       {t.is_active ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                           <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Đang áp dụng
                         </span>
                       ) : (
-                        <span className="text-[11px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                        <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
                           Ngưng áp dụng
                         </span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => handleOpenEdit(t)}
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                           title="Chỉnh sửa"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -223,38 +223,38 @@ export const DocumentTypesPage: React.FC = () => {
 
       {/* Modal Add / Edit */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/80 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900">
                 {editingType ? 'Cập nhật Loại tài liệu' : 'Thêm mới Loại tài liệu'}
               </h2>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveType} className="p-6 space-y-4">
+            <form onSubmit={handleSaveType} className="p-5 space-y-3.5 text-xs">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block font-semibold text-slate-700 mb-1">
                   Mã phân loại <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  disabled={!!editingType}
+                  disabled={Boolean(editingType)}
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  placeholder="VD: CONTRACT, DECISION, REPORT"
-                  className="w-full text-xs font-mono uppercase px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
+                  placeholder="VD: HOP_DONG, BIEN_BAN, DE_XUAT..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono uppercase focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-slate-100"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block font-semibold text-slate-700 mb-1">
                   Tên loại tài liệu <span className="text-rose-500">*</span>
                 </label>
                 <input
@@ -262,38 +262,38 @@ export const DocumentTypesPage: React.FC = () => {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="VD: Hợp đồng kinh tế"
-                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  placeholder="VD: Hợp đồng kinh tế, Biên bản nghiệm thu..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Mô tả / Phạm vi áp dụng
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Mô tả
                 </label>
                 <textarea
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Ghi chú phân loại..."
-                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  placeholder="Mô tả mục đích và tính chất loại tài liệu..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-xl font-medium cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl cursor-pointer disabled:opacity-50"
                 >
-                  {submitting ? 'Đang lưu...' : 'Lưu loại tài liệu'}
+                  {submitting ? 'Đang lưu...' : editingType ? 'Cập nhật' : 'Thêm mới'}
                 </button>
               </div>
             </form>
