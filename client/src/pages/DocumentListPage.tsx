@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FileText,
   Search,
-  Filter,
   Plus,
-  Calendar,
   Building2,
   Download,
   Printer,
@@ -13,9 +11,6 @@ import {
   History,
   Users,
   Eye,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
   Archive,
   RefreshCw,
   MoreVertical,
@@ -26,18 +21,28 @@ import {
   Tag,
   Folder,
   FolderPlus,
+  FolderOpen,
   LayoutGrid,
   List,
   PanelLeft,
   PanelLeftClose,
-  Layers,
+  PanelRight,
+  PanelRightClose,
   Move,
   X,
+  SlidersHorizontal,
+  UploadCloud,
+  ArrowUpLeft,
+  Clock,
+  Sparkles,
+  Edit2,
+  Check,
+  CheckSquare,
+  Square,
   FileSpreadsheet,
-  FileCode,
   FileImage,
-  File,
-  SlidersHorizontal
+  FileCode,
+  File
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -70,8 +75,10 @@ export const DocumentListPage: React.FC = () => {
     currentFolderPermissions: {}
   });
   const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
 
   // Documents state
   const [documents, setDocuments] = useState<any[]>([]);
@@ -79,7 +86,20 @@ export const DocumentListPage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(20);
+
+  // Inspector & selection state
+  const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
+  const [selectedDocIds, setSelectedDocIds] = useState<number[]>([]);
+
+  // Drag & drop state for direct file upload from desktop
+  const [isDraggingOverScreen, setIsDraggingOverScreen] = useState(false);
+  const dragCounter = useRef(0);
+  const quickFileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingQuick, setUploadingQuick] = useState(false);
+
+  // Quick Filter Chips: 'ALL' | 'PDF' | 'DOC' | 'XLS' | 'IMG' | 'EXPIRING' | 'MY_DOCS'
+  const [quickFilter, setQuickFilter] = useState<string>('ALL');
 
   // Filter Bar Form States
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -112,8 +132,9 @@ export const DocumentListPage: React.FC = () => {
 
   // Dropdown action row
   const [actionMenuOpenId, setActionMenuOpenId] = useState<number | string | null>(null);
+  const [folderMenuOpenId, setFolderMenuOpenId] = useState<number | string | null>(null);
 
-  // Drag & drop item state
+  // Drag & drop item state between folders
   const [dragItem, setDragItem] = useState<{ id: string; type: 'folder' | 'file'; name: string } | null>(null);
 
   // Active filters count
@@ -144,7 +165,10 @@ export const DocumentListPage: React.FC = () => {
       const url = currentFolderId ? `/folders/${currentFolderId}/contents` : '/folders/contents';
       const res = await api.get(url);
       if (res.data.success) {
-        setFolderData(res.data);
+        setFolderData({
+          ...res.data,
+          subfolders: res.data.subfolders || res.data.folders || []
+        });
       }
     } catch (err: any) {
       console.error('fetchFolderContents error:', err);
@@ -155,13 +179,19 @@ export const DocumentListPage: React.FC = () => {
   useEffect(() => {
     fetchTree();
 
-    api.get('/document-types').then(res => {
-      if (res.data.success) setTypes(res.data.types || []);
-    }).catch(() => {});
+    api
+      .get('/document-types')
+      .then((res) => {
+        if (res.data.success) setTypes(res.data.types || []);
+      })
+      .catch(() => {});
 
-    api.get('/departments').then(res => {
-      if (res.data.success) setDepartments(res.data.data?.data || res.data.data || []);
-    }).catch(() => {});
+    api
+      .get('/departments')
+      .then((res) => {
+        if (res.data.success) setDepartments(res.data.data?.data || res.data.data || []);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -204,6 +234,12 @@ export const DocumentListPage: React.FC = () => {
         setTotal(res.data.pagination.total);
         setTotalPages(res.data.pagination.totalPages || 1);
         setPage(res.data.pagination.page);
+
+        // Keep selectedDoc in sync if it exists in the fetched list
+        if (selectedDoc) {
+          const fresh = (res.data.documents || []).find((d: any) => d.id === selectedDoc.id);
+          if (fresh) setSelectedDoc(fresh);
+        }
       }
     } catch (err: any) {
       toast('error', err.response?.data?.message || 'Không thể tải danh sách tài liệu');
@@ -214,7 +250,43 @@ export const DocumentListPage: React.FC = () => {
 
   useEffect(() => {
     fetchDocuments(1);
-  }, [activeTab, currentFolderId, sortBy, sortOrder, limit, statusFilter, securityFilter, typeFilter, departmentFilter]);
+  }, [
+    activeTab,
+    currentFolderId,
+    sortBy,
+    sortOrder,
+    limit,
+    statusFilter,
+    securityFilter,
+    typeFilter,
+    departmentFilter
+  ]);
+
+  // Click outside and Escape key listener
+  useEffect(() => {
+    const handleWindowClick = () => {
+      setIsNewMenuOpen(false);
+      setActionMenuOpenId(null);
+      setFolderMenuOpenId(null);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        dragCounter.current = 0;
+        setIsDraggingOverScreen(false);
+        setIsNewMenuOpen(false);
+        setActionMenuOpenId(null);
+        setFolderMenuOpenId(null);
+      }
+    };
+
+    window.addEventListener('click', handleWindowClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('click', handleWindowClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -223,6 +295,7 @@ export const DocumentListPage: React.FC = () => {
 
   const handleClearFilters = () => {
     setSearchKeyword('');
+    setQuickFilter('ALL');
     setDateType('published_date');
     setStartDate('');
     setEndDate('');
@@ -243,20 +316,70 @@ export const DocumentListPage: React.FC = () => {
       newParams.delete('folderId');
     }
     setSearchParams(newParams);
+    setSelectedDoc(null);
+    setSelectedDocIds([]);
   };
 
-  const handleSelectTab = (tab: string) => {
-    const newParams = new URLSearchParams(searchParams);
-    if (tab === 'all') {
-      newParams.delete('tab');
-    } else {
-      newParams.set('tab', tab);
+  // Up 1 level parent navigation
+  const handleGoUpOneLevel = () => {
+    if (!folderData.breadcrumbs || folderData.breadcrumbs.length <= 1) return;
+    const parentFolder = folderData.breadcrumbs[folderData.breadcrumbs.length - 2];
+    handleSelectFolder(parentFolder?.id ? String(parentFolder.id) : null);
+  };
+
+  // Quick file upload (1-click upload or drop)
+  const handleQuickUpload = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+    const fileArray = Array.from(files);
+    setUploadingQuick(true);
+    let successCount = 0;
+
+    for (const file of fileArray) {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (currentFolderId) {
+        formData.append('folder_id', currentFolderId);
+      }
+      formData.append('name', file.name.replace(/\.[^/.]+$/, ''));
+      try {
+        const res = await api.post('/documents', formData);
+        if (res.data.success) successCount++;
+      } catch (err: any) {
+        console.error('Lỗi khi tải file:', err);
+      }
     }
-    setSearchParams(newParams);
+
+    setUploadingQuick(false);
+    if (successCount > 0) {
+      toast('success', `Đã tải lên thành công ${successCount} tệp!`);
+      fetchDocuments(1);
+      fetchFolderContents();
+      fetchTree();
+    } else {
+      toast('error', 'Tải tệp thất bại. Vui lòng thử lại.');
+    }
   };
 
+  // Rename folder
+  const handleRenameFolder = async (folder: any) => {
+    const newName = window.prompt(`Nhập tên mới cho thư mục "${folder.name}":`, folder.name);
+    if (!newName || newName.trim() === '' || newName === folder.name) return;
+
+    try {
+      const res = await api.put(`/folders/${folder.id}/rename`, { name: newName.trim() });
+      if (res.data.success) {
+        toast('success', 'Đã đổi tên thư mục thành công');
+        fetchTree();
+        fetchFolderContents();
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Lỗi khi đổi tên thư mục');
+    }
+  };
+
+  // Delete folder
   const handleDeleteFolder = async (folder: any) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa thư mục "${folder.name}" và các thư mục/tệp bên trong?`)) {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa thư mục "${folder.name}" và toàn bộ tệp bên trong?`)) {
       return;
     }
 
@@ -275,6 +398,7 @@ export const DocumentListPage: React.FC = () => {
     }
   };
 
+  // Download document
   const handleDownload = async (doc: any) => {
     try {
       if (doc.hasPassword) {
@@ -300,7 +424,6 @@ export const DocumentListPage: React.FC = () => {
       const res = await api.get(`/documents/${doc.id}/download`, {
         responseType: 'blob'
       });
-
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -310,50 +433,42 @@ export const DocumentListPage: React.FC = () => {
       link.remove();
       toast('success', 'Tải tài liệu thành công');
     } catch (err: any) {
-      toast('error', err.response?.data?.message || 'Không thể tải file (Kiểm tra quyền hạn hoặc mật khẩu)');
+      toast('error', err.response?.data?.message || 'Lỗi khi tải tài liệu');
     }
   };
 
-  const handlePrint = async (doc: any) => {
-    try {
-      let url = `/api/documents/${doc.id}/file`;
-      if (doc.hasPassword) {
-        const pass = window.prompt(`Vui lòng nhập mật khẩu tài liệu "${doc.name}" để in:`);
-        if (!pass) return;
-        url += `?password=${encodeURIComponent(pass)}`;
-      }
-
-      const printWindow = window.open(url, '_blank');
-      if (printWindow) {
-        printWindow.focus();
-      } else {
-        toast('warning', 'Trình duyệt đang chặn cửa sổ pop-up in ấn');
-      }
-    } catch (err: any) {
-      toast('error', 'Lỗi khi mở giao diện in ấn');
+  // Print document
+  const handlePrint = (doc: any) => {
+    api.post(`/documents/${doc.id}/print`).catch(() => {});
+    const printUrl = `/api/documents/${doc.id}/file`;
+    const win = window.open(printUrl, '_blank');
+    if (win) {
+      win.focus();
     }
   };
 
+  // Toggle liquidate
   const handleToggleLiquidate = async (doc: any) => {
     const isCurrentlyLiquidated = doc.status === 'LIQUIDATED';
-    const actionText = isCurrentlyLiquidated ? 'hủy thanh lý' : 'nghiệm thu / thanh lý';
-    if (!window.confirm(`Bạn có chắc muốn ${actionText} tài liệu "${doc.name}"?`)) return;
+    const actionText = isCurrentlyLiquidated ? 'hủy thanh lý' : 'nghiệm thu/thanh lý';
+    if (!window.confirm(`Xác nhận ${actionText} tài liệu "${doc.name}"?`)) return;
 
     try {
-      const res = await api.put(`/documents/${doc.id}/status`, {
+      const res = await api.put(`/documents/${doc.id}`, {
         status: isCurrentlyLiquidated ? 'ACTIVE' : 'LIQUIDATED'
       });
       if (res.data.success) {
-        toast('success', `Đã cập nhật trạng thái thành công`);
+        toast('success', `Đã ${actionText} tài liệu thành công`);
         fetchDocuments(page);
       }
     } catch (err: any) {
-      toast('error', 'Không thể cập nhật trạng thái tài liệu');
+      toast('error', err.response?.data?.message || 'Thao tác thất bại');
     }
   };
 
+  // Delete document
   const handleDeleteDoc = async (doc: any) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa tài liệu [${doc.documentCode}] "${doc.name}"?`)) {
+    if (!window.confirm(`Bạn có chắc chắn muốn chuyển tài liệu "${doc.name}" vào thùng rác?`)) {
       return;
     }
 
@@ -361,148 +476,262 @@ export const DocumentListPage: React.FC = () => {
       const res = await api.delete(`/documents/${doc.id}`);
       if (res.data.success) {
         toast('success', 'Đã chuyển tài liệu vào thùng rác');
+        if (selectedDoc?.id === doc.id) setSelectedDoc(null);
         fetchDocuments(page);
-        fetchFolderContents();
       }
     } catch (err: any) {
-      toast('error', 'Lỗi khi xóa tài liệu');
+      toast('error', err.response?.data?.message || 'Không thể xóa tài liệu');
     }
   };
 
+  // Bulk Actions
+  const handleSelectAllToggle = () => {
+    if (selectedDocIds.length === filteredDocuments.length) {
+      setSelectedDocIds([]);
+    } else {
+      setSelectedDocIds(filteredDocuments.map((d) => d.id));
+    }
+  };
+
+  const handleToggleDocSelect = (id: number) => {
+    setSelectedDocIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkDownload = async () => {
+    const docsToDownload = documents.filter((d) => selectedDocIds.includes(d.id));
+    for (const doc of docsToDownload) {
+      await handleDownload(doc);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`Bạn có chắc muốn xóa ${selectedDocIds.length} tài liệu đã chọn?`)) return;
+    for (const id of selectedDocIds) {
+      try {
+        await api.delete(`/documents/${id}`);
+      } catch {}
+    }
+    toast('success', `Đã xóa ${selectedDocIds.length} tài liệu`);
+    setSelectedDocIds([]);
+    setSelectedDoc(null);
+    fetchDocuments(page);
+  };
+
+  // Drag & drop dropzone on folders
   const handleDropOnFolder = async (targetFolderId: string | null) => {
     if (!dragItem) return;
 
     try {
-      if (dragItem.type === 'folder') {
-        const res = await api.put(`/folders/${dragItem.id}/move`, { targetParentId: targetFolderId });
+      if (dragItem.type === 'file') {
+        const res = await api.put(`/documents/${dragItem.id}`, {
+          folder_id: targetFolderId ? Number(targetFolderId) : 1
+        });
         if (res.data.success) {
-          toast('success', 'Đã di chuyển thư mục');
-          fetchTree();
+          toast('success', `Đã chuyển "${dragItem.name}" vào thư mục mới`);
+          fetchDocuments(page);
           fetchFolderContents();
         }
-      } else {
-        const res = await api.put(`/documents/${dragItem.id}`, { folder_id: targetFolderId ? Number(targetFolderId) : 1 });
+      } else if (dragItem.type === 'folder') {
+        if (String(dragItem.id) === String(targetFolderId)) return;
+        const res = await api.put(`/folders/${dragItem.id}/move`, {
+          targetParentId: targetFolderId ? Number(targetFolderId) : null
+        });
         if (res.data.success) {
-          toast('success', 'Đã di chuyển tài liệu vào thư mục');
-          fetchDocuments(page);
+          toast('success', `Đã chuyển thư mục "${dragItem.name}" thành công`);
+          fetchTree();
           fetchFolderContents();
         }
       }
     } catch (err: any) {
-      toast('error', err.response?.data?.message || 'Không thể di chuyển đối tượng');
+      toast('error', err.response?.data?.message || 'Lỗi khi di chuyển');
     } finally {
       setDragItem(null);
     }
   };
 
-  // Helper file icon renderer
-  const getFileIcon = (fileName = '', ext = '') => {
+  // Check if dragged item is external file from OS
+  const isExternalFileDrag = (e: React.DragEvent) => {
+    if (dragItem) return false;
+    if (!e.dataTransfer) return false;
+    const types = Array.from(e.dataTransfer.types || []);
+    return types.includes('Files') || types.includes('application/x-moz-file');
+  };
+
+  // Full window drag & drop upload handlers
+  const handleScreenDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!isExternalFileDrag(e)) return;
+    dragCounter.current++;
+    setIsDraggingOverScreen(true);
+  };
+
+  const handleScreenDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current <= 0) {
+      setIsDraggingOverScreen(false);
+      dragCounter.current = 0;
+    }
+  };
+
+  const handleScreenDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!isExternalFileDrag(e)) return;
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleScreenDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDraggingOverScreen(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleQuickUpload(e.dataTransfer.files);
+    }
+  };
+
+  // File size format
+  const formatSize = (bytes: number) => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+  };
+
+  // Format file icon based on file type
+  const getFileIcon = (fileName = '', ext = '', sizeClass = 'w-9 h-9 text-xs') => {
     const extension = (ext || fileName.split('.').pop() || '').toLowerCase();
     if (['pdf'].includes(extension)) {
       return (
-        <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-[10px] shrink-0 border border-rose-100">
+        <div className={`${sizeClass} rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold shrink-0 border border-rose-200/60 shadow-2xs`}>
           PDF
         </div>
       );
     }
     if (['doc', 'docx'].includes(extension)) {
       return (
-        <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[10px] shrink-0 border border-blue-100">
+        <div className={`${sizeClass} rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0 border border-blue-200/60 shadow-2xs`}>
           DOC
         </div>
       );
     }
     if (['xls', 'xlsx', 'csv'].includes(extension)) {
       return (
-        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-[10px] shrink-0 border border-emerald-100">
+        <div className={`${sizeClass} rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0 border border-emerald-200/60 shadow-2xs`}>
           XLS
         </div>
       );
     }
-    if (['jpg', 'jpeg', 'png', 'webp'].includes(extension)) {
+    if (['jpg', 'jpeg', 'png', 'webp', 'svg'].includes(extension)) {
       return (
-        <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-[10px] shrink-0 border border-purple-100">
+        <div className={`${sizeClass} rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold shrink-0 border border-purple-200/60 shadow-2xs`}>
           IMG
         </div>
       );
     }
     return (
-      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] shrink-0 border border-slate-200">
+      <div className={`${sizeClass} rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold shrink-0 border border-slate-200 shadow-2xs`}>
         FILE
       </div>
     );
   };
 
-  // Status badge with clean soft design
-  const getStatusBadge = (status: string, daysLeft: number | null) => {
-    switch (status) {
-      case 'ACTIVE':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Hiệu lực
-          </span>
-        );
-      case 'EXPIRING':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Sắp hết hạn
-            {daysLeft !== null && daysLeft >= 0 && (
-              <span className="text-[10px] font-mono font-bold">({daysLeft}d)</span>
-            )}
-          </span>
-        );
-      case 'EXPIRED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Hết hạn
-          </span>
-        );
-      case 'LIQUIDATED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
-            <Archive className="w-3 h-3 text-slate-400" /> Đã thanh lý
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
-            {status}
-          </span>
-        );
+  // Filter documents by quick filter chips
+  const filteredDocuments = documents.filter((doc) => {
+    if (quickFilter === 'ALL') return true;
+    const ext = (doc.fileType || doc.fileName?.split('.').pop() || '').toLowerCase();
+    if (quickFilter === 'PDF') return ext === 'pdf';
+    if (quickFilter === 'DOC') return ['doc', 'docx'].includes(ext);
+    if (quickFilter === 'XLS') return ['xls', 'xlsx', 'csv'].includes(ext);
+    if (quickFilter === 'IMG') return ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
+    if (quickFilter === 'EXPIRING') {
+      return doc.status === 'EXPIRING' || (doc.daysUntilExpiry !== null && doc.daysUntilExpiry <= 30);
     }
-  };
+    if (quickFilter === 'MY_DOCS') {
+      return Number(doc.uploadedBy) === Number(user?.id);
+    }
+    return true;
+  });
 
-  const getSecurityBadge = (level: string) => {
-    switch (level) {
-      case 'CONFIDENTIAL':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200/60">
-            Mật
-          </span>
-        );
-      case 'INTERNAL':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200/60">
-            Nội bộ
-          </span>
-        );
-      case 'PUBLIC':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-            Công khai
-          </span>
-        );
-      default:
-        return (
-          <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600">
-            {level}
-          </span>
-        );
-    }
-  };
+  // Current folder name from breadcrumbs
+  const currentFolderName =
+    folderData.breadcrumbs && folderData.breadcrumbs.length > 0
+      ? folderData.breadcrumbs[folderData.breadcrumbs.length - 1]?.name
+      : 'Tất cả tài liệu';
+
+  const canGoUp = folderData.breadcrumbs && folderData.breadcrumbs.length > 1;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] min-h-0 bg-slate-50 overflow-hidden relative">
+    <div
+      onDragEnter={handleScreenDragEnter}
+      onDragLeave={handleScreenDragLeave}
+      onDragOver={handleScreenDragOver}
+      onDrop={handleScreenDrop}
+      className="flex h-[calc(100vh-4rem)] min-h-0 bg-slate-50 overflow-hidden relative select-none"
+    >
+      {/* Hidden File Input for 1-Click Quick Upload */}
+      <input
+        type="file"
+        ref={quickFileInputRef}
+        multiple
+        onChange={(e) => {
+          if (e.target.files) handleQuickUpload(e.target.files);
+          e.target.value = '';
+        }}
+        className="hidden"
+      />
+
+      {/* FULL-SCREEN DRAG & DROP OVERLAY (Google Drive Style) */}
+      {isDraggingOverScreen && (
+        <div
+          onClick={() => {
+            dragCounter.current = 0;
+            setIsDraggingOverScreen(false);
+          }}
+          onDragOver={handleScreenDragOver}
+          onDrop={handleScreenDrop}
+          className="absolute inset-0 z-50 bg-blue-600/15 backdrop-blur-xs border-4 border-dashed border-blue-500 rounded-2xl m-3 flex flex-col items-center justify-center animate-in fade-in duration-150 cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="p-6 rounded-3xl bg-white shadow-2xl flex flex-col items-center gap-3 text-center border border-blue-100 max-w-sm relative cursor-default"
+          >
+            <button
+              onClick={() => {
+                dragCounter.current = 0;
+                setIsDraggingOverScreen(false);
+              }}
+              className="absolute top-3.5 right-3.5 p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Đóng (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center animate-bounce">
+              <UploadCloud className="w-9 h-9" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800">Thả tệp vào đây để tải lên</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Tệp sẽ được lưu vào thư mục <span className="font-semibold text-blue-600">"{currentFolderName}"</span>
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                dragCounter.current = 0;
+                setIsDraggingOverScreen(false);
+              }}
+              className="mt-1 px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+            >
+              Hủy bỏ (Đóng)
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 1. LEFT PANEL: Enterprise Folder Tree */}
       <aside
         className={`${
@@ -512,7 +741,7 @@ export const DocumentListPage: React.FC = () => {
         <div className="p-3.5 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Folder className="w-4 h-4 text-blue-600" />
-            <span className="font-bold text-xs text-slate-800">Thư mục</span>
+            <span className="font-bold text-xs text-slate-800">Cây thư mục</span>
           </div>
 
           <div className="flex items-center gap-1">
@@ -555,11 +784,11 @@ export const DocumentListPage: React.FC = () => {
         </div>
       </aside>
 
-      {/* 2. MAIN CONTENT AREA */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto p-4 lg:p-6 space-y-4">
+      {/* 2. MAIN CENTER CONTENT AREA */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto p-4 lg:p-5 space-y-4">
         {/* Top Header Bar: Clean Breadcrumb & Primary Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             {isTreeCollapsed && (
               <button
                 onClick={() => setIsTreeCollapsed(false)}
@@ -567,6 +796,18 @@ export const DocumentListPage: React.FC = () => {
                 title="Mở cây thư mục"
               >
                 <PanelLeft className="w-4 h-4 text-blue-600" />
+              </button>
+            )}
+
+            {/* Up 1 Level Button */}
+            {canGoUp && (
+              <button
+                onClick={handleGoUpOneLevel}
+                className="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-blue-600 transition-colors shrink-0 cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                title="Lên 1 cấp thư mục"
+              >
+                <ArrowUpLeft className="w-4 h-4" />
+                <span className="hidden md:inline">Lên 1 cấp</span>
               </button>
             )}
 
@@ -581,32 +822,82 @@ export const DocumentListPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Actions & View Switcher */}
+          {/* Quick Actions Bar */}
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => {
-                setCreateFolderParentId(currentFolderId);
-                setIsCreateFolderOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all cursor-pointer shadow-xs"
-            >
-              <FolderPlus className="w-3.5 h-3.5 text-slate-500" />
-              <span>Thư mục mới</span>
-            </button>
+            {/* GOOGLE DRIVE STYLE "+ TẠO MỚI / TẢI LÊN" BUTTON */}
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsNewMenuOpen(!isNewMenuOpen);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Mới</span>
+              </button>
 
-            <button
-              onClick={() => setIsCreateDocOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-xs cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Tải tài liệu</span>
-            </button>
+              {isNewMenuOpen && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 sm:left-0 mt-2 w-56 bg-white border border-slate-200/90 rounded-2xl shadow-xl p-1.5 z-40 animate-in fade-in zoom-in-95 duration-100 text-left"
+                >
+                  <button
+                    onClick={() => {
+                      setIsNewMenuOpen(false);
+                      setCreateFolderParentId(currentFolderId);
+                      setIsCreateFolderOpen(true);
+                    }}
+                    className="w-full px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <FolderPlus className="w-4 h-4 text-amber-500" />
+                    <div>
+                      <div className="font-semibold">Thư mục mới</div>
+                      <div className="text-[10px] text-slate-400">Tạo folder tại thư mục này</div>
+                    </div>
+                  </button>
 
+                  <button
+                    onClick={() => {
+                      setIsNewMenuOpen(false);
+                      quickFileInputRef.current?.click();
+                    }}
+                    className="w-full px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <UploadCloud className="w-4 h-4 text-blue-600" />
+                    <div>
+                      <div className="font-semibold">Tải nhanh tệp lên</div>
+                      <div className="text-[10px] text-slate-400">Chọn tệp từ máy tính</div>
+                    </div>
+                  </button>
+
+                  <div className="my-1 border-t border-slate-100" />
+
+                  <button
+                    onClick={() => {
+                      setIsNewMenuOpen(false);
+                      setIsCreateDocOpen(true);
+                    }}
+                    className="w-full px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-purple-600 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-purple-600" />
+                    <div>
+                      <div className="font-semibold">Hồ sơ / Văn bản chi tiết</div>
+                      <div className="text-[10px] text-slate-400">Gắn loại văn bản, đối tác, hạn</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* View Switcher: Table / Grid */}
             <div className="flex items-center border border-slate-200 rounded-xl p-0.5 bg-slate-50 ml-1">
               <button
                 onClick={() => setViewMode('table')}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  viewMode === 'table' ? 'bg-white text-blue-600 shadow-xs font-bold' : 'text-slate-400 hover:text-slate-600'
+                  viewMode === 'table'
+                    ? 'bg-white text-blue-600 shadow-xs font-bold'
+                    : 'text-slate-400 hover:text-slate-600'
                 }`}
                 title="Chế độ xem Bảng"
               >
@@ -615,102 +906,93 @@ export const DocumentListPage: React.FC = () => {
               <button
                 onClick={() => setViewMode('grid')}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  viewMode === 'grid' ? 'bg-white text-blue-600 shadow-xs font-bold' : 'text-slate-400 hover:text-slate-600'
+                  viewMode === 'grid'
+                    ? 'bg-white text-blue-600 shadow-xs font-bold'
+                    : 'text-slate-400 hover:text-slate-600'
                 }`}
                 title="Chế độ xem Lưới"
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
               </button>
             </div>
+
+            {/* Toggle Inspector Panel */}
+            <button
+              onClick={() => setIsInspectorOpen(!isInspectorOpen)}
+              className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
+                isInspectorOpen
+                  ? 'bg-blue-50 border-blue-200 text-blue-600'
+                  : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+              }`}
+              title={isInspectorOpen ? 'Ẩn bảng chi tiết' : 'Hiện bảng chi tiết'}
+            >
+              <PanelRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        {/* Unified Controls: Segmented Tabs on Left + Search & Filter on Right */}
-        <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            {/* Segmented Status Tabs */}
-            <div className="flex items-center p-1 bg-slate-100 rounded-xl overflow-x-auto shrink-0">
-              <button
-                onClick={() => handleSelectTab('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'all'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Tất cả
-              </button>
+        {/* QUICK SEARCH & 1-TOUCH FILTER CHIPS (Notion / Google Drive Style) */}
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            {/* Search Input */}
+            <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-md">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                placeholder="Tìm theo tên tệp, mã hồ sơ, đối tác..."
+                className="w-full text-xs pl-8 pr-8 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/60"
+              />
+              {searchKeyword && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchKeyword('');
+                    setTimeout(() => fetchDocuments(1), 0);
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </form>
 
-              <button
-                onClick={() => handleSelectTab('my_docs')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'my_docs'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Của tôi
-              </button>
+            {/* Quick 1-Touch Filter Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+              {[
+                { id: 'ALL', label: 'Tất cả' },
+                { id: 'PDF', label: 'PDF' },
+                { id: 'DOC', label: 'Word' },
+                { id: 'XLS', label: 'Excel' },
+                { id: 'IMG', label: 'Hình ảnh' },
+                { id: 'EXPIRING', label: 'Sắp hết hạn' },
+                { id: 'MY_DOCS', label: 'Của tôi' }
+              ].map((chip) => (
+                <button
+                  key={chip.id}
+                  onClick={() => setQuickFilter(chip.id)}
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                    quickFilter === chip.id
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
 
-              <button
-                onClick={() => handleSelectTab('expiring')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                  activeTab === 'expiring'
-                    ? 'bg-white text-amber-700 shadow-xs'
-                    : 'text-slate-600 hover:text-amber-700'
-                }`}
-              >
-                <span>Sắp hết hạn</span>
-              </button>
-
-              <button
-                onClick={() => handleSelectTab('liquidated')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'liquidated'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Đã thanh lý
-              </button>
-            </div>
-
-            {/* Search Input & Advanced Filter Toggle */}
-            <div className="flex items-center gap-2 flex-1 max-w-xl">
-              <form onSubmit={handleSearchSubmit} className="relative flex-1">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchKeyword}
-                  onChange={(e) => setSearchKeyword(e.target.value)}
-                  placeholder="Tìm theo tên, mã hợp đồng, đối tác..."
-                  className="w-full text-xs pl-8 pr-8 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50"
-                />
-                {searchKeyword && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchKeyword('');
-                      setTimeout(() => fetchDocuments(1), 0);
-                    }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </form>
-
-              {/* Filter Button with Count Badge */}
+              {/* Advanced Filter Button */}
               <button
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer shrink-0 ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold border transition-all cursor-pointer shrink-0 ml-1 ${
                   isFilterOpen || activeFiltersCount > 0
                     ? 'bg-blue-50 border-blue-200 text-blue-700'
                     : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>Bộ lọc</span>
+                <span>Lọc nâng cao</span>
                 {activeFiltersCount > 0 && (
                   <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">
                     {activeFiltersCount}
@@ -721,8 +1003,7 @@ export const DocumentListPage: React.FC = () => {
               {activeFiltersCount > 0 && (
                 <button
                   onClick={handleClearFilters}
-                  className="text-xs text-slate-400 hover:text-rose-600 transition-colors cursor-pointer shrink-0"
-                  title="Xóa tất cả bộ lọc"
+                  className="text-xs text-slate-400 hover:text-rose-600 transition-colors cursor-pointer shrink-0 ml-1"
                 >
                   Đặt lại
                 </button>
@@ -835,42 +1116,98 @@ export const DocumentListPage: React.FC = () => {
           )}
         </div>
 
-        {/* Subfolders Section: Clean minimal pills */}
+        {/* SUBFOLDERS SECTION: Sleek Google Drive Style Folder Cards */}
         {folderData.subfolders && folderData.subfolders.length > 0 && (
           <div className="space-y-2">
-            <div className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <Folder className="w-3.5 h-3.5 text-amber-500" />
-              <span>Thư mục con ({folderData.subfolders.length})</span>
+            <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Folder className="w-4 h-4 text-amber-500" />
+                <span>Thư mục ({folderData.subfolders.length})</span>
+              </div>
+              <span className="text-[11px] text-slate-400 font-normal">Nhấp để mở hoặc kéo thả tệp vào</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {folderData.subfolders.map((folder: any) => (
                 <div
                   key={folder.id}
                   onClick={() => handleSelectFolder(String(folder.id))}
-                  className="p-2.5 bg-white hover:bg-blue-50/40 rounded-xl border border-slate-200/80 hover:border-blue-300 shadow-2xs transition-all cursor-pointer group flex items-center justify-between gap-2"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleDropOnFolder(String(folder.id));
+                  }}
+                  className="p-3 bg-white hover:bg-amber-50/30 rounded-2xl border border-slate-200/80 hover:border-amber-300 shadow-2xs hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between relative"
                 >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Folder className="w-5 h-5 text-amber-500 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="font-semibold text-xs text-slate-800 truncate group-hover:text-blue-600 transition-colors">
-                        {folder.name}
-                      </div>
-                      <div className="text-[10px] text-slate-400">
-                        {folder.file_count || 0} tệp
-                      </div>
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform">
+                      <Folder className="w-5 h-5 fill-amber-400/30 text-amber-600" />
+                    </div>
+
+                    {/* 3-Dots Folder Menu */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFolderMenuOpenId(folderMenuOpenId === folder.id ? null : folder.id);
+                        }}
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                      >
+                        <MoreVertical className="w-3.5 h-3.5" />
+                      </button>
+
+                      {folderMenuOpenId === folder.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-30 text-left text-xs"
+                        >
+                          <button
+                            onClick={() => {
+                              setFolderMenuOpenId(null);
+                              handleRenameFolder(folder);
+                            }}
+                            className="w-full px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Đổi tên</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setFolderMenuOpenId(null);
+                              setMoveItem({ item: folder, type: 'folder' });
+                            }}
+                            className="w-full px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                          >
+                            <Move className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Di chuyển</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setFolderMenuOpenId(null);
+                              handleDeleteFolder(folder);
+                            }}
+                            className="w-full px-3 py-1.5 text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Xóa thư mục</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteFolder(folder);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 transition-opacity p-1"
-                    title="Xóa thư mục"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  <div className="mt-2.5">
+                    <div className="font-bold text-xs text-slate-800 truncate group-hover:text-amber-800 transition-colors" title={folder.name}>
+                      {folder.name}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {folder.file_count || 0} tài liệu
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -878,131 +1215,212 @@ export const DocumentListPage: React.FC = () => {
         )}
 
         {/* 3. DOCUMENTS LIST SECTION */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden flex flex-col">
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden flex flex-col flex-1">
           {loading ? (
-            <div className="py-20 flex flex-col items-center justify-center text-xs text-slate-400">
-              <RefreshCw className="w-5 h-5 animate-spin text-blue-600 mb-2" />
+            <div className="py-24 flex flex-col items-center justify-center text-xs text-slate-400">
+              <RefreshCw className="w-6 h-6 animate-spin text-blue-600 mb-2.5" />
               <span>Đang tải danh sách tài liệu...</span>
             </div>
-          ) : documents.length === 0 ? (
-            <div className="py-16 text-center text-xs text-slate-500 space-y-2">
-              <FileText className="w-10 h-10 text-slate-300 mx-auto" />
-              <div className="font-semibold text-slate-700">Chưa có tài liệu nào</div>
-              <p className="text-slate-400 max-w-sm mx-auto">
-                Thư mục hiện tại chưa có tài liệu. Bấm nút "Tải tài liệu" ở góc trên để thêm hồ sơ mới.
-              </p>
+          ) : filteredDocuments.length === 0 ? (
+            <div className="py-20 text-center text-xs text-slate-500 space-y-3 px-4">
+              <div className="w-14 h-14 rounded-3xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                <FileText className="w-7 h-7" />
+              </div>
+              <div>
+                <div className="font-bold text-slate-800 text-sm">Chưa có tài liệu nào</div>
+                <p className="text-slate-400 max-w-sm mx-auto mt-1">
+                  Kéo thả tệp từ máy tính vào đây hoặc bấm nút <span className="font-semibold text-blue-600">+ Mới</span> để tải lên nhanh.
+                </p>
+              </div>
+              <button
+                onClick={() => quickFileInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs transition-colors shadow-xs cursor-pointer"
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>Tải tệp lên ngay</span>
+              </button>
             </div>
           ) : viewMode === 'table' ? (
-            /* TABLE VIEW: Clean, modern, balanced 6 columns */
+            /* TABLE VIEW: Clean, modern, balanced columns */
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-600 border-collapse">
                 <thead className="bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
                   <tr>
-                    <th className="py-3 px-4 min-w-[260px]">Tài liệu / Văn bản</th>
-                    <th className="py-3 px-3.5 min-w-[150px]">Phân loại & Đơn vị</th>
-                    <th className="py-3 px-3.5 min-w-[140px]">Thời hạn & Hiệu lực</th>
-                    <th className="py-3 px-3.5 min-w-[110px]">Bảo mật</th>
-                    <th className="py-3 px-3.5 min-w-[120px]">Người lưu</th>
-                    <th className="py-3 px-4 text-right min-w-[130px]">Thao tác</th>
+                    <th className="py-3 px-3 w-10 text-center">
+                      <button
+                        onClick={handleSelectAllToggle}
+                        className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {selectedDocIds.length === filteredDocuments.length ? (
+                          <CheckSquare className="w-4 h-4 text-blue-600" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="py-3 px-3 min-w-[240px]">Tài liệu / Văn bản</th>
+                    <th className="py-3 px-3 min-w-[130px]">Phân loại</th>
+                    <th className="py-3 px-3 min-w-[110px]">Dung lượng</th>
+                    <th className="py-3 px-3 min-w-[120px]">Thời hạn & Hiệu lực</th>
+                    <th className="py-3 px-3 min-w-[100px]">Bảo mật</th>
+                    <th className="py-3 px-3 min-w-[110px]">Người tải</th>
+                    <th className="py-3 px-4 text-right min-w-[110px]">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {documents.map((doc) => (
-                    <tr
-                      key={doc.id}
-                      draggable
-                      onDragStart={(e) => {
-                        setDragItem({ id: String(doc.id), type: 'file', name: doc.name });
-                        e.dataTransfer.setData('text/plain', JSON.stringify({ id: doc.id, type: 'file', name: doc.name }));
-                      }}
-                      onDragEnd={() => setDragItem(null)}
-                      className="hover:bg-slate-50/70 transition-colors group"
-                    >
-                      {/* Cột 1: Tên văn bản + File icon + Mã + Version */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          {getFileIcon(doc.fileName, doc.fileType)}
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-slate-900 text-xs truncate max-w-[280px]">
-                                {doc.name}
-                              </span>
-                              {doc.hasPassword && (
-                                <span
-                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0"
-                                  title="Được bảo vệ bằng mật khẩu"
-                                >
-                                  <Lock className="w-2.5 h-2.5 text-amber-600" /> Khóa mã
+                  {filteredDocuments.map((doc) => {
+                    const isSelected = selectedDocIds.includes(doc.id);
+                    const isCurrentInspector = selectedDoc?.id === doc.id;
+
+                    return (
+                      <tr
+                        key={doc.id}
+                        draggable
+                        onDragStart={(e) => {
+                          setDragItem({ id: String(doc.id), type: 'file', name: doc.name });
+                          e.dataTransfer.setData('text/plain', JSON.stringify({ id: doc.id, type: 'file', name: doc.name }));
+                        }}
+                        onDragEnd={() => setDragItem(null)}
+                        onClick={() => {
+                          setSelectedDoc(doc);
+                          setIsInspectorOpen(true);
+                        }}
+                        className={`hover:bg-blue-50/30 transition-colors cursor-pointer group ${
+                          isCurrentInspector ? 'bg-blue-50/50' : isSelected ? 'bg-slate-50' : ''
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <td
+                          className="py-3 px-3 text-center"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleDocSelect(doc.id);
+                          }}
+                        >
+                          <button className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
+                          </button>
+                        </td>
+
+                        {/* Tên văn bản + File icon */}
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2.5">
+                            {getFileIcon(doc.fileName, doc.fileType)}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-slate-900 text-xs truncate max-w-[240px]">
+                                  {doc.name}
                                 </span>
-                              )}
-                              {doc.version > 1 && (
-                                <span className="text-[10px] font-bold bg-purple-50 text-purple-700 px-1.5 py-0.2 rounded shrink-0 border border-purple-200">
-                                  v{doc.version}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
-                              <span className="font-mono text-slate-600 font-semibold">{doc.documentCode}</span>
-                              <span className="truncate max-w-[180px]">{doc.fileName}</span>
+                                {doc.hasPassword && (
+                                  <span title="Bảo vệ bằng mật mã">
+                                    <Lock className="w-3 h-3 text-amber-500 shrink-0" />
+                                  </span>
+                                )}
+                                {doc.version > 1 && (
+                                  <span className="text-[10px] font-bold bg-purple-50 text-purple-700 px-1.5 py-0.2 rounded border border-purple-200">
+                                    v{doc.version}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                <span className="font-mono text-slate-600 font-semibold">{doc.documentCode}</span>
+                                <span className="truncate max-w-[150px]">{doc.fileName}</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Cột 2: Phân loại & Đơn vị */}
-                      <td className="py-3 px-3.5">
-                        <div className="font-medium text-slate-800 text-[11px]">
-                          {doc.documentTypeName}
-                        </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
-                          <Building2 className="w-3 h-3" />
-                          <span className="truncate max-w-[140px]">{doc.departmentName}</span>
-                        </div>
-                      </td>
+                        {/* Phân loại & Phòng ban */}
+                        <td className="py-3 px-3">
+                          <div className="font-medium text-slate-800 text-[11px]">
+                            {doc.documentTypeName || 'Chung'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate max-w-[120px]">
+                            {doc.departmentName || 'Toàn công ty'}
+                          </div>
+                        </td>
 
-                      {/* Cột 3: Thời hạn & Hiệu lực */}
-                      <td className="py-3 px-3.5 whitespace-nowrap">
-                        <div className="mb-1">{getStatusBadge(doc.status, doc.daysUntilExpiry)}</div>
-                        <div className="text-[10px] text-slate-400">
-                          {doc.expiryDate ? `Hạn: ${new Date(doc.expiryDate).toLocaleDateString('vi-VN')}` : 'Vô thời hạn'}
-                        </div>
-                      </td>
+                        {/* Dung lượng */}
+                        <td className="py-3 px-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                          {formatSize(doc.fileSize)}
+                        </td>
 
-                      {/* Cột 4: Mức độ bảo mật */}
-                      <td className="py-3 px-3.5 whitespace-nowrap">
-                        {getSecurityBadge(doc.securityLevel)}
-                      </td>
-
-                      {/* Cột 5: Người lưu */}
-                      <td className="py-3 px-3.5 whitespace-nowrap">
-                        <div className="font-medium text-slate-700 text-xs">{doc.uploaderName}</div>
-                      </td>
-
-                      {/* Cột 6: Thao tác trực tiếp */}
-                      <td className="py-3 px-4 text-right whitespace-nowrap relative">
-                        <div className="flex items-center justify-end gap-1">
-                          {/* Preview button */}
-                          <button
-                            onClick={() => {
-                              setPreviewFile({
-                                id: doc.id,
-                                name: doc.name,
-                                fileName: doc.fileName,
-                                extension: doc.fileType,
-                                url: `/api/documents/${doc.id}/file`,
-                                previewUrl: `/api/documents/${doc.id}/file`,
-                                hasPassword: doc.hasPassword,
-                                isEncrypted: doc.hasPassword || doc.isEncrypted
-                              });
-                            }}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                            title="Xem trước tài liệu"
+                        {/* Thời hạn & Hiệu lực */}
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              doc.status === 'ACTIVE'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : doc.status === 'EXPIRING'
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
                           >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                            {doc.status === 'ACTIVE'
+                              ? 'Hiệu lực'
+                              : doc.status === 'EXPIRING'
+                              ? 'Sắp hết hạn'
+                              : doc.status === 'LIQUIDATED'
+                              ? 'Đã thanh lý'
+                              : 'Hết hạn'}
+                          </span>
+                        </td>
 
-                          {/* Download button */}
-                          {doc.canDownload && (
+                        {/* Mức độ bảo mật */}
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              doc.securityLevel === 'CONFIDENTIAL'
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : doc.securityLevel === 'INTERNAL'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}
+                          >
+                            {doc.securityLevel === 'CONFIDENTIAL'
+                              ? 'Mật'
+                              : doc.securityLevel === 'INTERNAL'
+                              ? 'Nội bộ'
+                              : 'Công khai'}
+                          </span>
+                        </td>
+
+                        {/* Người tải */}
+                        <td className="py-3 px-3 whitespace-nowrap text-slate-600 text-xs">
+                          {doc.uploaderName || 'Admin'}
+                        </td>
+
+                        {/* Thao tác trực tiếp */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div
+                            className="flex items-center justify-end gap-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {/* Preview button */}
+                            <button
+                              onClick={() => {
+                                setPreviewFile({
+                                  id: doc.id,
+                                  name: doc.name,
+                                  fileName: doc.fileName,
+                                  extension: doc.fileType,
+                                  url: `/api/documents/${doc.id}/file`,
+                                  previewUrl: `/api/documents/${doc.id}/file`,
+                                  hasPassword: doc.hasPassword,
+                                  isEncrypted: doc.hasPassword || doc.isEncrypted
+                                });
+                              }}
+                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title="Xem trước tài liệu"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+
+                            {/* Download button */}
                             <button
                               onClick={() => handleDownload(doc)}
                               className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
@@ -1010,33 +1428,22 @@ export const DocumentListPage: React.FC = () => {
                             >
                               <Download className="w-4 h-4" />
                             </button>
-                          )}
 
-                          {/* Version history */}
-                          <button
-                            onClick={() => setVersionDoc(doc)}
-                            className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                            title="Lịch sử phiên bản"
-                          >
-                            <History className="w-4 h-4" />
-                          </button>
-
-                          {/* More dropdown */}
-                          <div className="relative">
-                            <button
-                              onClick={() => setActionMenuOpenId(actionMenuOpenId === doc.id ? null : doc.id)}
-                              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-
-                            {actionMenuOpenId === doc.id && (
-                              <div
-                                onClick={() => setActionMenuOpenId(null)}
-                                className="absolute right-0 mt-1 w-48 bg-white border border-slate-200/90 rounded-2xl shadow-xl py-1 z-30 text-left divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100"
+                            {/* More dropdown */}
+                            <div className="relative">
+                              <button
+                                onClick={() => setActionMenuOpenId(actionMenuOpenId === doc.id ? null : doc.id)}
+                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                               >
-                                <div className="py-1">
-                                  {doc.canDownload && (
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+
+                              {actionMenuOpenId === doc.id && (
+                                <div
+                                  onClick={() => setActionMenuOpenId(null)}
+                                  className="absolute right-0 mt-1 w-48 bg-white border border-slate-200/90 rounded-2xl shadow-xl py-1 z-30 text-left divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100"
+                                >
+                                  <div className="py-1">
                                     <button
                                       onClick={() => handlePrint(doc)}
                                       className="w-full px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1044,9 +1451,7 @@ export const DocumentListPage: React.FC = () => {
                                       <Printer className="w-3.5 h-3.5 text-slate-500" />
                                       <span>In ấn tài liệu</span>
                                     </button>
-                                  )}
 
-                                  {(doc.canAdmin || Number(doc.uploadedBy) === Number(user?.id) || user?.role === 'ADMIN') && (
                                     <button
                                       onClick={() => {
                                         setPasswordDoc(doc);
@@ -1057,9 +1462,7 @@ export const DocumentListPage: React.FC = () => {
                                       <KeyRound className="w-3.5 h-3.5 text-amber-600" />
                                       <span>{doc.hasPassword ? 'Đổi / Gỡ mật khẩu' : 'Cài mật khẩu'}</span>
                                     </button>
-                                  )}
 
-                                  {doc.canAdmin && (
                                     <button
                                       onClick={() => setPermissionDoc(doc)}
                                       className="w-full px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1067,17 +1470,23 @@ export const DocumentListPage: React.FC = () => {
                                       <Users className="w-3.5 h-3.5 text-indigo-600" />
                                       <span>Phân quyền tài liệu</span>
                                     </button>
-                                  )}
 
-                                  <button
-                                    onClick={() => setMoveItem({ item: doc, type: 'file' })}
-                                    className="w-full px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                                  >
-                                    <Move className="w-3.5 h-3.5 text-blue-600" />
-                                    <span>Di chuyển thư mục</span>
-                                  </button>
+                                    <button
+                                      onClick={() => setVersionDoc(doc)}
+                                      className="w-full px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                                    >
+                                      <History className="w-3.5 h-3.5 text-purple-600" />
+                                      <span>Lịch sử phiên bản</span>
+                                    </button>
 
-                                  {doc.canEdit && (
+                                    <button
+                                      onClick={() => setMoveItem({ item: doc, type: 'file' })}
+                                      className="w-full px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                                    >
+                                      <Move className="w-3.5 h-3.5 text-blue-600" />
+                                      <span>Di chuyển thư mục</span>
+                                    </button>
+
                                     <button
                                       onClick={() => handleToggleLiquidate(doc)}
                                       className="w-full px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
@@ -1087,10 +1496,8 @@ export const DocumentListPage: React.FC = () => {
                                         {doc.status === 'LIQUIDATED' ? 'Hủy thanh lý' : 'Nghiệm thu / Thanh lý'}
                                       </span>
                                     </button>
-                                  )}
-                                </div>
+                                  </div>
 
-                                {doc.canAdmin && (
                                   <div className="py-1">
                                     <button
                                       onClick={() => handleDeleteDoc(doc)}
@@ -1100,74 +1507,88 @@ export const DocumentListPage: React.FC = () => {
                                       <span>Xóa tài liệu</span>
                                     </button>
                                   </div>
-                                )}
-                              </div>
-                            )}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           ) : (
-            /* GRID VIEW: Clean document cards */
+            /* GRID VIEW: Clean modern document cards */
             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
-              {documents.map((doc) => (
-                <div
-                  key={doc.id}
-                  className="bg-white rounded-2xl border border-slate-200/80 p-4 hover:border-blue-300 hover:shadow-md transition-all flex flex-col justify-between group"
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-2">
-                      {getFileIcon(doc.fileName, doc.fileType)}
-                      <div className="flex items-center gap-1">
-                        {doc.hasPassword && <Lock className="w-3.5 h-3.5 text-amber-600" />}
-                        {getSecurityBadge(doc.securityLevel)}
+              {filteredDocuments.map((doc) => {
+                const isSelected = selectedDocIds.includes(doc.id);
+                const isCurrentInspector = selectedDoc?.id === doc.id;
+
+                return (
+                  <div
+                    key={doc.id}
+                    onClick={() => {
+                      setSelectedDoc(doc);
+                      setIsInspectorOpen(true);
+                    }}
+                    className={`bg-white rounded-2xl border p-4 hover:border-blue-300 hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer ${
+                      isCurrentInspector
+                        ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-md'
+                        : isSelected
+                        ? 'border-blue-300 bg-blue-50/20'
+                        : 'border-slate-200/80 shadow-2xs'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        {getFileIcon(doc.fileName, doc.fileType)}
+                        <div className="flex items-center gap-1.5">
+                          {doc.hasPassword && <Lock className="w-3.5 h-3.5 text-amber-600" />}
+                          <span className="text-[10px] font-mono text-slate-400">{formatSize(doc.fileSize)}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
+                        <div className="font-bold text-xs text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
+                          {doc.name}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          {doc.documentCode}
+                        </div>
+                        <div className="text-[11px] text-slate-600 mt-2 flex items-center gap-1">
+                          <Tag className="w-3 h-3 text-slate-400" />
+                          <span className="truncate">{doc.documentTypeName || 'Chung'}</span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="mt-3">
-                      <div className="font-bold text-xs text-slate-900 line-clamp-1 group-hover:text-blue-600 transition-colors">
-                        {doc.name}
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <div className="text-[10px] text-slate-400">
+                        {doc.uploaderName || 'Admin'}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {doc.documentCode}
-                      </div>
-                      <div className="text-[11px] text-slate-600 mt-2 flex items-center gap-1">
-                        <Tag className="w-3 h-3 text-slate-400" />
-                        <span>{doc.documentTypeName}</span>
-                      </div>
-                      <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-                        <Building2 className="w-3 h-3 text-slate-400" />
-                        <span>{doc.departmentName}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <div>{getStatusBadge(doc.status, doc.daysUntilExpiry)}</div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          setPreviewFile({
-                            id: doc.id,
-                            name: doc.name,
-                            fileName: doc.fileName,
-                            extension: doc.fileType,
-                            url: `/api/documents/${doc.id}/file`,
-                            previewUrl: `/api/documents/${doc.id}/file`,
-                            hasPassword: doc.hasPassword,
-                            isEncrypted: doc.hasPassword || doc.isEncrypted
-                          });
-                        }}
-                        className="p-1 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded"
-                        title="Xem trước"
+                      <div
+                        className="flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                      {doc.canDownload && (
+                        <button
+                          onClick={() => {
+                            setPreviewFile({
+                              id: doc.id,
+                              name: doc.name,
+                              fileName: doc.fileName,
+                              extension: doc.fileType,
+                              url: `/api/documents/${doc.id}/file`,
+                              previewUrl: `/api/documents/${doc.id}/file`,
+                              hasPassword: doc.hasPassword,
+                              isEncrypted: doc.hasPassword || doc.isEncrypted
+                            });
+                          }}
+                          className="p-1 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded"
+                          title="Xem trước"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           onClick={() => handleDownload(doc)}
                           className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded"
@@ -1175,18 +1596,18 @@ export const DocumentListPage: React.FC = () => {
                         >
                           <Download className="w-3.5 h-3.5" />
                         </button>
-                      )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
           {/* Pagination Bar */}
-          <div className="p-3.5 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <div className="p-3.5 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 mt-auto">
             <div>
-              Hiển thị <span className="font-bold text-slate-700">{documents.length}</span> /{' '}
+              Hiển thị <span className="font-bold text-slate-700">{filteredDocuments.length}</span> /{' '}
               <span className="font-bold text-slate-700">{total}</span> tài liệu
             </div>
 
@@ -1212,6 +1633,228 @@ export const DocumentListPage: React.FC = () => {
           </div>
         </div>
       </main>
+
+      {/* 3. RIGHT PANEL: Multi-utility File Inspector (Google Drive / MacOS Finder Style) */}
+      {isInspectorOpen && (
+        <aside className="w-80 border-l border-slate-200/80 bg-white flex flex-col shrink-0 overflow-y-auto z-20">
+          <div className="p-3.5 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-blue-600" />
+              <span className="font-bold text-xs text-slate-800">Thông tin & Tiện ích</span>
+            </div>
+            <button
+              onClick={() => setIsInspectorOpen(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              title="Đóng bảng chi tiết"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {selectedDoc ? (
+            <div className="p-4 space-y-5 text-xs">
+              {/* File Icon Preview & Big Name */}
+              <div className="flex flex-col items-center text-center p-4 bg-slate-50/70 rounded-2xl border border-slate-100">
+                {getFileIcon(selectedDoc.fileName, selectedDoc.fileType, 'w-14 h-14 text-sm')}
+                <h3 className="font-bold text-sm text-slate-800 mt-3 line-clamp-2" title={selectedDoc.name}>
+                  {selectedDoc.name}
+                </h3>
+                <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                  {selectedDoc.documentCode}
+                </div>
+              </div>
+
+              {/* Action Buttons Grid */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  Tác vụ nhanh
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      setPreviewFile({
+                        id: selectedDoc.id,
+                        name: selectedDoc.name,
+                        fileName: selectedDoc.fileName,
+                        extension: selectedDoc.fileType,
+                        url: `/api/documents/${selectedDoc.id}/file`,
+                        previewUrl: `/api/documents/${selectedDoc.id}/file`,
+                        hasPassword: selectedDoc.hasPassword,
+                        isEncrypted: selectedDoc.hasPassword || selectedDoc.isEncrypted
+                      });
+                    }}
+                    className="p-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>Xem trước</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleDownload(selectedDoc)}
+                    className="p-2.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Tải về</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={() => {
+                      setPasswordDoc(selectedDoc);
+                      setIsPasswordModalOpen(true);
+                    }}
+                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5 text-amber-500" />
+                    <span>{selectedDoc.hasPassword ? 'Gỡ mã khóa' : 'Cài mật mã'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setPermissionDoc(selectedDoc)}
+                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Users className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Phân quyền</span>
+                  </button>
+
+                  <button
+                    onClick={() => setVersionDoc(selectedDoc)}
+                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <History className="w-3.5 h-3.5 text-purple-500" />
+                    <span>Phiên bản (v{selectedDoc.version})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setMoveItem({ item: selectedDoc, type: 'file' })}
+                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Move className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Di chuyển</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => handleDeleteDoc(selectedDoc)}
+                  className="w-full mt-2 p-2 text-rose-600 hover:bg-rose-50 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa vào thùng rác</span>
+                </button>
+              </div>
+
+              {/* Document Details Metadata */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Chi tiết hồ sơ
+                </div>
+
+                <div className="space-y-2 text-slate-600">
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-400">Dung lượng:</span>
+                    <span className="font-semibold text-slate-700">{formatSize(selectedDoc.fileSize)}</span>
+                  </div>
+
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-400">Định dạng:</span>
+                    <span className="font-semibold uppercase text-slate-700">{selectedDoc.fileType}</span>
+                  </div>
+
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-400">Loại văn bản:</span>
+                    <span className="font-semibold text-slate-700">{selectedDoc.documentTypeName || 'Chung'}</span>
+                  </div>
+
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-400">Phòng ban:</span>
+                    <span className="font-semibold text-slate-700">{selectedDoc.departmentName || 'Nội bộ'}</span>
+                  </div>
+
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-400">Bảo mật:</span>
+                    <span className="font-semibold text-slate-700">{selectedDoc.securityLevel}</span>
+                  </div>
+
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-400">Người tải:</span>
+                    <span className="font-semibold text-slate-700">{selectedDoc.uploaderName || 'Admin'}</span>
+                  </div>
+
+                  <div className="flex justify-between py-1">
+                    <span className="text-slate-400">Ngày tạo:</span>
+                    <span className="font-semibold text-slate-700">
+                      {selectedDoc.createdAt ? new Date(selectedDoc.createdAt).toLocaleDateString('vi-VN') : '-'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-xs text-slate-400 space-y-2">
+              <FolderOpen className="w-10 h-10 text-slate-300" />
+              <div>
+                <p className="font-semibold text-slate-600">Chưa chọn tài liệu nào</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Nhấp vào một tài liệu trong danh sách để xem chi tiết và các tác vụ nhanh.
+                </p>
+              </div>
+            </div>
+          )}
+        </aside>
+      )}
+
+      {/* FLOATING BULK ACTIONS BAR (When 1+ documents are selected) */}
+      {selectedDocIds.length > 0 && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="text-xs font-bold flex items-center gap-2">
+            <span className="w-5 h-5 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center">
+              {selectedDocIds.length}
+            </span>
+            <span>Đã chọn {selectedDocIds.length} tài liệu</span>
+          </div>
+
+          <div className="h-4 w-px bg-slate-700" />
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBulkDownload}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Tải về</span>
+            </button>
+
+            <button
+              onClick={handleBulkDelete}
+              className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Xóa</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedDocIds([])}
+              className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              title="Bỏ chọn tất cả"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* FLOATING QUICK UPLOAD PROGRESS NOTIFIER */}
+      {uploadingQuick && (
+        <div className="absolute bottom-6 right-6 z-40 bg-white border border-slate-200 p-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" />
+          <div className="text-xs">
+            <div className="font-bold text-slate-800">Đang tải tệp lên...</div>
+            <div className="text-slate-400 text-[11px]">Vui lòng đợi trong giây lát</div>
+          </div>
+        </div>
+      )}
 
       {/* MODALS */}
       {isCreateFolderOpen && (
@@ -1260,7 +1903,7 @@ export const DocumentListPage: React.FC = () => {
           onClose={() => setVersionDoc(null)}
           documentId={versionDoc.id}
           documentTitle={versionDoc.name}
-          canEdit={Boolean(versionDoc.canEdit)}
+          canEdit={Boolean(versionDoc.canEdit || versionDoc.canAdmin)}
           onVersionUploaded={() => {
             fetchDocuments(page);
           }}
@@ -1273,9 +1916,15 @@ export const DocumentListPage: React.FC = () => {
           onClose={() => setPermissionDoc(null)}
           documentId={permissionDoc.id}
           documentTitle={permissionDoc.name}
-          onPermissionsUpdated={() => {
-            fetchDocuments(page);
-          }}
+        />
+      )}
+
+      {previewFile && (
+        <FilePreviewModal
+          isOpen={Boolean(previewFile)}
+          onClose={() => setPreviewFile(null)}
+          file={previewFile}
+          onDownload={() => handleDownload(previewFile)}
         />
       )}
 
@@ -1290,15 +1939,6 @@ export const DocumentListPage: React.FC = () => {
           onSuccess={() => {
             fetchDocuments(page);
           }}
-        />
-      )}
-
-      {previewFile && (
-        <FilePreviewModal
-          file={previewFile}
-          isOpen={Boolean(previewFile)}
-          onClose={() => setPreviewFile(null)}
-          onDownload={(file, password) => handleDownload({ ...file, password })}
         />
       )}
     </div>

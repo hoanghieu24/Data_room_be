@@ -156,6 +156,7 @@ class FolderServices {
             } : null,
             breadcrumbs,
             folders,
+            subfolders: folders,
             files,
             currentFolderPermissions: {
                 canRead: true,
