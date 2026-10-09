@@ -244,11 +244,52 @@ class FolderModel {
     static async buildTree(userRole = 'ADMIN', userId = null) {
         const allFolders = await this.findAll();
 
+        // Query active documents
+        const [docs] = await db.query(
+            `SELECT id, document_code, name, file_name, file_type, file_size, folder_id,
+                    access_password_hash, is_encrypted, status, security_level, created_at, updated_at
+             FROM documents 
+             WHERE is_active = 1 AND deleted_at IS NULL
+             ORDER BY name ASC`
+        );
+
+        // Group docs by folder_id
+        const docsByFolder = new Map();
+        const rootFiles = [];
+        docs.forEach(d => {
+            const ext = (d.file_type || d.file_name?.split('.').pop() || 'bin').toLowerCase();
+            const fileItem = {
+                id: d.id,
+                documentCode: d.document_code,
+                name: d.name,
+                fileName: d.file_name,
+                extension: ext,
+                fileType: ext,
+                size: d.file_size || 0,
+                fileSize: d.file_size || 0,
+                folderId: d.folder_id,
+                status: d.status || 'ACTIVE',
+                securityLevel: d.security_level || 'INTERNAL',
+                hasPassword: !!d.access_password_hash,
+                isEncrypted: !!d.is_encrypted || !!d.access_password_hash,
+                createdAt: d.created_at,
+                updatedAt: d.updated_at
+            };
+            if (!d.folder_id || d.folder_id === 1) {
+                rootFiles.push(fileItem);
+            } else {
+                const arr = docsByFolder.get(d.folder_id) || [];
+                arr.push(fileItem);
+                docsByFolder.set(d.folder_id, arr);
+            }
+        });
+
         // Filter folders by permission
         const accessibleFolders = allFolders.filter(f => this.canAccessFolder(f, userRole, userId));
         const folderMap = new Map();
 
         accessibleFolders.forEach(f => {
+            const folderFiles = docsByFolder.get(f.id) || [];
             folderMap.set(f.id, {
                 id: f.id,
                 name: f.name,
@@ -258,8 +299,9 @@ class FolderModel {
                 accessLevel: f.access_level,
                 allowedRoles: typeof f.allowed_roles === 'string' ? JSON.parse(f.allowed_roles) : f.allowed_roles,
                 allowedUsers: typeof f.allowed_users === 'string' ? JSON.parse(f.allowed_users) : f.allowed_users,
-                fileCount: Number(f.file_count) || 0,
+                fileCount: folderFiles.length || Number(f.file_count) || 0,
                 totalSize: Number(f.total_size) || 0,
+                files: folderFiles,
                 children: []
             });
         });
@@ -273,7 +315,10 @@ class FolderModel {
             }
         });
 
-        return rootNodes;
+        return {
+            nodes: rootNodes,
+            rootFiles
+        };
     }
 }
 

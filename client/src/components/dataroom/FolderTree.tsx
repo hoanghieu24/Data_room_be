@@ -1,20 +1,36 @@
 import React, { useState } from 'react';
-import { Folder, FolderOpen, ChevronRight, ChevronDown, Layers, Trash2, GripVertical, FolderPlus } from 'lucide-react';
+import {
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  ChevronDown,
+  Layers,
+  Trash2,
+  GripVertical,
+  FolderPlus,
+  Image as ImageIcon,
+  FileText
+} from 'lucide-react';
 
 export interface TreeNode {
   id: string;
   name: string;
   parentId: string | null;
   path: string;
-  subfolderCount: number;
+  subfolderCount?: number;
   fileCount: number;
+  totalSize?: number;
+  files?: any[];
   children: TreeNode[];
 }
 
 interface FolderTreeProps {
   tree: TreeNode[];
+  rootFiles?: any[];
   selectedFolderId: string | null;
+  selectedFileId?: string | number | null;
   onSelectFolder: (folderId: string | null) => void;
+  onSelectFile?: (file: any) => void;
   dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
   onDropItem?: (targetFolderId: string | null) => void;
   onDragStartItem?: (item: { id: string; type: 'folder'; name: string }) => void;
@@ -23,10 +39,62 @@ interface FolderTreeProps {
   onCreateRootFolder?: () => void;
 }
 
+/**
+ * Icon badge định dạng file đồng bộ chuẩn với giao diện trong ảnh
+ */
+export const FileMiniBadge: React.FC<{ file: any; size?: 'sm' | 'md' }> = ({ file, size = 'sm' }) => {
+  const name = file?.name || file?.fileName || '';
+  const ext = (file?.extension || file?.fileType || name.split('.').pop() || '').toLowerCase();
+
+  const isExcel = ['xls', 'xlsx', 'csv'].includes(ext);
+  const isPdf = ext === 'pdf';
+  const isWord = ['doc', 'docx'].includes(ext);
+  const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext);
+
+  const dimClass = size === 'md' ? 'w-8 h-8 rounded-lg text-xs' : 'w-5 h-5 rounded text-[10px]';
+
+  if (isExcel) {
+    return (
+      <div className={`${dimClass} bg-emerald-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs`}>
+        X
+      </div>
+    );
+  }
+  if (isPdf) {
+    return (
+      <div className={`${dimClass} bg-rose-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs tracking-tight ${size === 'md' ? 'text-xs' : 'text-[8px]'}`}>
+        pdf
+      </div>
+    );
+  }
+  if (isWord) {
+    return (
+      <div className={`${dimClass} bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs`}>
+        W
+      </div>
+    );
+  }
+  if (isImage) {
+    return (
+      <div className={`${dimClass} bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs`}>
+        <ImageIcon className={size === 'md' ? 'w-4 h-4' : 'w-3 h-3'} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${dimClass} bg-slate-500 text-white flex items-center justify-center shrink-0 shadow-xs`}>
+      <FileText className={size === 'md' ? 'w-4 h-4' : 'w-3 h-3'} />
+    </div>
+  );
+};
+
 const TreeItem: React.FC<{
   node: TreeNode;
   selectedFolderId: string | null;
+  selectedFileId?: string | number | null;
   onSelectFolder: (folderId: string | null) => void;
+  onSelectFile?: (file: any) => void;
   dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
   onDropItem?: (targetFolderId: string | null) => void;
   onDragStartItem?: (item: { id: string; type: 'folder'; name: string }) => void;
@@ -35,17 +103,21 @@ const TreeItem: React.FC<{
 }> = ({
   node,
   selectedFolderId,
+  selectedFileId,
   onSelectFolder,
+  onSelectFile,
   dragItem,
   onDropItem,
   onDragStartItem,
   onDragEndItem,
   onDeleteFolder,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
-  const isSelected = selectedFolderId === node.id;
+  const isSelected = selectedFolderId === String(node.id);
   const hasChildren = node.children && node.children.length > 0;
+  const hasFiles = node.files && node.files.length > 0;
+  const canExpand = hasChildren || hasFiles;
 
   const canAcceptDrop = dragItem && (dragItem.type !== 'folder' || String(dragItem.id) !== String(node.id));
 
@@ -70,7 +142,7 @@ const TreeItem: React.FC<{
             ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200'
             : 'text-slate-700 hover:bg-slate-100'
         }`}
-        onClick={() => onSelectFolder(node.id)}
+        onClick={() => onSelectFolder(String(node.id))}
         onDragOver={(e) => {
           if (canAcceptDrop) {
             e.preventDefault();
@@ -85,7 +157,7 @@ const TreeItem: React.FC<{
           e.stopPropagation();
           setIsDragOver(false);
           if (canAcceptDrop) {
-            onDropItem?.(node.id);
+            onDropItem?.(String(node.id));
           }
         }}
       >
@@ -97,7 +169,7 @@ const TreeItem: React.FC<{
           }}
           className="p-0.5 hover:bg-slate-200 rounded text-slate-400"
         >
-          {hasChildren ? (
+          {canExpand ? (
             isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
           ) : (
             <span className="w-3.5 h-3.5 inline-block" />
@@ -114,9 +186,9 @@ const TreeItem: React.FC<{
 
         <span className="truncate flex-1 font-medium">{node.name}</span>
 
-        {(node.fileCount > 0 || node.subfolderCount > 0) && (
+        {(node.fileCount > 0 || (node.files && node.files.length > 0)) && (
           <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded-full font-semibold">
-            {node.fileCount}
+            {node.fileCount || node.files?.length || 0}
           </span>
         )}
 
@@ -136,14 +208,17 @@ const TreeItem: React.FC<{
         )}
       </div>
 
-      {hasChildren && isOpen && (
-        <div className="pl-4 ml-2 border-l border-slate-200 mt-0.5 space-y-0.5">
-          {node.children.map((child) => (
+      {canExpand && isOpen && (
+        <div className="pl-3.5 ml-2 border-l border-slate-200 mt-0.5 space-y-0.5">
+          {/* Subfolders */}
+          {node.children?.map((child) => (
             <TreeItem
               key={child.id}
               node={child}
               selectedFolderId={selectedFolderId}
+              selectedFileId={selectedFileId}
               onSelectFolder={onSelectFolder}
+              onSelectFile={onSelectFile}
               dragItem={dragItem}
               onDropItem={onDropItem}
               onDragStartItem={onDragStartItem}
@@ -151,6 +226,29 @@ const TreeItem: React.FC<{
               onDeleteFolder={onDeleteFolder}
             />
           ))}
+
+          {/* Files inside this folder */}
+          {node.files?.map((file: any) => {
+            const isFileSelected = selectedFileId && String(selectedFileId) === String(file.id);
+            return (
+              <div
+                key={file.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectFile?.(file);
+                }}
+                className={`flex items-center gap-2 py-1 px-2 rounded-lg cursor-pointer transition-colors ${
+                  isFileSelected
+                    ? 'bg-blue-50 text-blue-700 font-semibold'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                title={file.name}
+              >
+                <FileMiniBadge file={file} size="sm" />
+                <span className="truncate flex-1 font-normal text-xs">{file.name}</span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -159,8 +257,11 @@ const TreeItem: React.FC<{
 
 export const FolderTree: React.FC<FolderTreeProps> = ({
   tree,
+  rootFiles = [],
   selectedFolderId,
+  selectedFileId,
   onSelectFolder,
+  onSelectFile,
   dragItem,
   onDropItem,
   onDragStartItem,
@@ -169,6 +270,9 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   onCreateRootFolder,
 }) => {
   const [isRootDragOver, setIsRootDragOver] = useState(false);
+  const [isRootOpen, setIsRootOpen] = useState(true);
+
+  const hasRootContent = tree.length > 0 || rootFiles.length > 0;
 
   return (
     <div className="space-y-1">
@@ -200,8 +304,35 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             : 'text-slate-700 hover:bg-slate-100'
         }`}
       >
-        <Layers className="w-4 h-4" />
-        <span className="truncate">Tất cả thư mục (Root)</span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsRootOpen(!isRootOpen);
+          }}
+          className={`p-0.5 rounded ${
+            selectedFolderId === null ? 'text-blue-100 hover:bg-blue-700' : 'text-slate-400 hover:bg-slate-200'
+          }`}
+        >
+          {hasRootContent ? (
+            isRootOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
+          ) : (
+            <span className="w-3.5 h-3.5 inline-block" />
+          )}
+        </button>
+
+        <Layers className="w-4 h-4 shrink-0" />
+        <span className="truncate flex-1">Tất cả thư mục (Root)</span>
+
+        {rootFiles.length > 0 && (
+          <span
+            className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
+              selectedFolderId === null ? 'bg-blue-700 text-blue-100' : 'bg-slate-100 text-slate-500'
+            }`}
+          >
+            {rootFiles.length}
+          </span>
+        )}
 
         {onCreateRootFolder && (
           <button
@@ -210,7 +341,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
               e.stopPropagation();
               onCreateRootFolder();
             }}
-            className={`p-1 rounded transition-all cursor-pointer ml-auto shrink-0 opacity-0 group-hover:opacity-100 ${
+            className={`p-1 rounded transition-all cursor-pointer shrink-0 opacity-0 group-hover:opacity-100 ${
               selectedFolderId === null
                 ? 'hover:bg-blue-700 text-blue-100 hover:text-white'
                 : 'hover:bg-slate-200 text-slate-400 hover:text-blue-600'
@@ -222,22 +353,53 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
         )}
       </div>
 
-      <div className="pt-1 space-y-0.5">
-        {tree.map((node) => (
-          <TreeItem
-            key={node.id}
-            node={node}
-            selectedFolderId={selectedFolderId}
-            onSelectFolder={onSelectFolder}
-            dragItem={dragItem}
-            onDropItem={onDropItem}
-            onDragStartItem={onDragStartItem}
-            onDragEndItem={onDragEndItem}
-            onDeleteFolder={onDeleteFolder}
-          />
-        ))}
-      </div>
+      {isRootOpen && (
+        <div className="pt-0.5 space-y-0.5">
+          {/* Cây thư mục */}
+          {tree.map((node) => (
+            <TreeItem
+              key={node.id}
+              node={node}
+              selectedFolderId={selectedFolderId}
+              selectedFileId={selectedFileId}
+              onSelectFolder={onSelectFolder}
+              onSelectFile={onSelectFile}
+              dragItem={dragItem}
+              onDropItem={onDropItem}
+              onDragStartItem={onDragStartItem}
+              onDragEndItem={onDragEndItem}
+              onDeleteFolder={onDeleteFolder}
+            />
+          ))}
+
+          {/* Danh sách các file nằm ở Root (không thuộc thư mục nào) */}
+          {rootFiles.length > 0 && (
+            <div className="pl-3.5 ml-2 border-l border-slate-200 mt-0.5 space-y-0.5">
+              {rootFiles.map((file: any) => {
+                const isFileSelected = selectedFileId && String(selectedFileId) === String(file.id);
+                return (
+                  <div
+                    key={file.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectFile?.(file);
+                    }}
+                    className={`flex items-center gap-2 py-1 px-2 rounded-lg cursor-pointer transition-colors ${
+                      isFileSelected
+                        ? 'bg-blue-50 text-blue-700 font-semibold'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                    title={file.name}
+                  >
+                    <FileMiniBadge file={file} size="sm" />
+                    <span className="truncate flex-1 font-normal text-xs">{file.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
-

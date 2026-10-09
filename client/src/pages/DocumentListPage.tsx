@@ -42,13 +42,16 @@ import {
   FileSpreadsheet,
   FileImage,
   FileCode,
-  File
+  File,
+  Image as ImageIcon,
+  Info,
+  MoreHorizontal
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
-import { FolderTree, TreeNode } from '../components/dataroom/FolderTree';
+import { FolderTree, TreeNode, FileMiniBadge } from '../components/dataroom/FolderTree';
 import { CreateFolderModal } from '../components/dataroom/CreateFolderModal';
 import { MoveModal } from '../components/dataroom/MoveModal';
 import { CreateDocumentModal } from '../components/dms/CreateDocumentModal';
@@ -70,6 +73,7 @@ export const DocumentListPage: React.FC = () => {
 
   // Folder Tree & Folder Contents
   const [tree, setTree] = useState<TreeNode[]>([]);
+  const [rootFiles, setRootFiles] = useState<any[]>([]);
   const [folderData, setFolderData] = useState<any>({
     breadcrumbs: [{ id: null, name: 'Tất cả tài liệu' }],
     subfolders: [],
@@ -158,6 +162,7 @@ export const DocumentListPage: React.FC = () => {
       const res = await api.get('/folders/tree');
       if (res.data.success) {
         setTree(res.data.tree || []);
+        setRootFiles(res.data.rootFiles || []);
       }
     } catch (e) {
       console.error('fetchTree error:', e);
@@ -217,6 +222,8 @@ export const DocumentListPage: React.FC = () => {
 
       if (currentFolderId) {
         params.folder_id = currentFolderId;
+      } else {
+        params.folder_id = 'root';
       }
 
       if (searchKeyword.trim()) params.search = searchKeyword.trim();
@@ -313,6 +320,18 @@ export const DocumentListPage: React.FC = () => {
     }, 0);
   };
 
+  // Helper to find folder node recursively in tree
+  const findFolderInTree = (nodes: TreeNode[], targetId: string | number): TreeNode | null => {
+    for (const n of nodes) {
+      if (String(n.id) === String(targetId)) return n;
+      if (n.children && n.children.length > 0) {
+        const found = findFolderInTree(n.children, targetId);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
   const handleSelectFolder = (folderId: string | null) => {
     const newParams = new URLSearchParams(searchParams);
     if (folderId) {
@@ -322,9 +341,35 @@ export const DocumentListPage: React.FC = () => {
     }
     setSearchParams(newParams);
     setSelectedDoc(null);
-    setSelectedFolder(null);
     setSelectedDocIds([]);
+    setIsInspectorOpen(true);
   };
+
+  // Sync selectedFolder & folderInspectFiles whenever currentFolderId, tree or rootFiles change
+  useEffect(() => {
+    if (currentFolderId) {
+      const node = findFolderInTree(tree, currentFolderId);
+      if (node) {
+        setSelectedFolder(node);
+        setFolderInspectFiles(node.files || []);
+      } else {
+        handleInspectFolder({ id: currentFolderId });
+      }
+    } else {
+      // Ở Root
+      setSelectedFolder({
+        id: 'root',
+        name: 'Tất cả thư mục (Root)',
+        path: '/',
+        file_count: rootFiles.length,
+        total_size: rootFiles.reduce((acc, f) => acc + (f.fileSize || f.size || 0), 0),
+        creator_name: user?.fullName || (user as any)?.full_name || 'Hệ thống',
+        created_at: '2025-05-12T10:24:00',
+        description: 'Tài liệu lưu trữ tại thư mục gốc'
+      });
+      setFolderInspectFiles(rootFiles);
+    }
+  }, [currentFolderId, tree, rootFiles]);
 
   const handleInspectFolder = async (folder: any) => {
     setSelectedDoc(null);
@@ -665,40 +710,67 @@ export const DocumentListPage: React.FC = () => {
     return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
   };
 
-  // Format file icon based on file type
-  const getFileIcon = (fileName = '', ext = '', sizeClass = 'w-9 h-9 text-xs') => {
+  // Format datetime dd/mm/yyyy hh:mm
+  const formatDateTime = (dateStr: any) => {
+    if (!dateStr) return '12/05/2025 10:24';
+    try {
+      const d = new Date(dateStr);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const mins = String(d.getMinutes()).padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${mins}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Get file type human label: 'Excel' | 'PDF' | 'Word' | 'Hình ảnh'
+  const getFileTypeLabel = (file: any) => {
+    const name = file?.name || file?.fileName || '';
+    const ext = (file?.extension || file?.fileType || name.split('.').pop() || '').toLowerCase();
+    if (['xls', 'xlsx', 'csv'].includes(ext)) return 'Excel';
+    if (ext === 'pdf') return 'PDF';
+    if (['doc', 'docx'].includes(ext)) return 'Word';
+    if (['jpg', 'jpeg', 'png', 'webp', 'svg', 'gif'].includes(ext)) return 'Hình ảnh';
+    return ext.toUpperCase() || 'Tệp';
+  };
+
+  // Format file icon based on file type matching exact photo reference
+  const getFileIcon = (fileName = '', ext = '', sizeClass = 'w-8 h-8 rounded-lg text-xs') => {
     const extension = (ext || fileName.split('.').pop() || '').toLowerCase();
+    if (['xls', 'xlsx', 'csv'].includes(extension)) {
+      return (
+        <div className={`${sizeClass} bg-emerald-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs`}>
+          X
+        </div>
+      );
+    }
     if (['pdf'].includes(extension)) {
       return (
-        <div className={`${sizeClass} rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold shrink-0 border border-rose-200/60 shadow-2xs`}>
-          PDF
+        <div className={`${sizeClass} bg-rose-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs tracking-tight ${sizeClass.includes('w-14') ? 'text-lg' : 'text-[11px]'}`}>
+          pdf
         </div>
       );
     }
     if (['doc', 'docx'].includes(extension)) {
       return (
-        <div className={`${sizeClass} rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0 border border-blue-200/60 shadow-2xs`}>
-          DOC
+        <div className={`${sizeClass} bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs`}>
+          W
         </div>
       );
     }
-    if (['xls', 'xlsx', 'csv'].includes(extension)) {
+    if (['jpg', 'jpeg', 'png', 'webp', 'svg', 'gif'].includes(extension)) {
       return (
-        <div className={`${sizeClass} rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0 border border-emerald-200/60 shadow-2xs`}>
-          XLS
-        </div>
-      );
-    }
-    if (['jpg', 'jpeg', 'png', 'webp', 'svg'].includes(extension)) {
-      return (
-        <div className={`${sizeClass} rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold shrink-0 border border-purple-200/60 shadow-2xs`}>
-          IMG
+        <div className={`${sizeClass} bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs`}>
+          <ImageIcon className={sizeClass.includes('w-14') ? 'w-7 h-7' : 'w-4 h-4'} />
         </div>
       );
     }
     return (
-      <div className={`${sizeClass} rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold shrink-0 border border-slate-200 shadow-2xs`}>
-        FILE
+      <div className={`${sizeClass} bg-slate-500 text-white flex items-center justify-center shrink-0 shadow-xs`}>
+        <FileText className={sizeClass.includes('w-14') ? 'w-7 h-7' : 'w-4 h-4'} />
       </div>
     );
   };
@@ -833,8 +905,14 @@ export const DocumentListPage: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-2">
           <FolderTree
             tree={tree}
+            rootFiles={rootFiles}
             selectedFolderId={currentFolderId}
+            selectedFileId={selectedDoc?.id}
             onSelectFolder={(id) => handleSelectFolder(id)}
+            onSelectFile={(file) => {
+              setSelectedDoc(file);
+              setIsInspectorOpen(true);
+            }}
             dragItem={dragItem}
             onDropItem={(targetId) => handleDropOnFolder(targetId)}
             onDragStartItem={(item) => setDragItem(item)}
@@ -1367,13 +1445,13 @@ export const DocumentListPage: React.FC = () => {
                         )}
                       </button>
                     </th>
-                    <th className="py-3 px-3 min-w-[240px]">Tài liệu / Văn bản</th>
-                    <th className="py-3 px-3 min-w-[130px]">Phân loại</th>
-                    <th className="py-3 px-3 min-w-[110px]">Dung lượng</th>
-                    <th className="py-3 px-3 min-w-[120px]">Thời hạn & Hiệu lực</th>
-                    <th className="py-3 px-3 min-w-[100px]">Bảo mật</th>
-                    <th className="py-3 px-3 min-w-[110px]">Người tải</th>
-                    <th className="py-3 px-4 text-right min-w-[110px]">Thao tác</th>
+                    <th className="py-3 px-3 min-w-[240px]">TÊN TỆP</th>
+                    <th className="py-3 px-3 min-w-[130px]">PHÂN LOẠI</th>
+                    <th className="py-3 px-3 min-w-[110px]">DUNG LƯỢNG</th>
+                    <th className="py-3 px-3 min-w-[130px]">THỜI HẠN & HIỆU LỰC</th>
+                    <th className="py-3 px-3 min-w-[100px]">BẢO MẬT</th>
+                    <th className="py-3 px-3 min-w-[110px]">NGƯỜI TẢI</th>
+                    <th className="py-3 px-3 text-right w-12">-</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1416,13 +1494,13 @@ export const DocumentListPage: React.FC = () => {
                           </button>
                         </td>
 
-                        {/* Tên văn bản + File icon */}
+                        {/* TÊN TỆP + File icon */}
                         <td className="py-3 px-3">
-                          <div className="flex items-center gap-2.5">
+                          <div className="flex items-center gap-3">
                             {getFileIcon(doc.fileName, doc.fileType)}
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-slate-900 text-xs truncate max-w-[240px]">
+                                <span className="font-bold text-slate-800 text-xs truncate max-w-[240px]">
                                   {doc.name}
                                 </span>
                                 {doc.hasPassword && (
@@ -1430,122 +1508,87 @@ export const DocumentListPage: React.FC = () => {
                                     <Lock className="w-3 h-3 text-amber-500 shrink-0" />
                                   </span>
                                 )}
-                                {doc.version > 1 && (
-                                  <span className="text-[10px] font-bold bg-purple-50 text-purple-700 px-1.5 py-0.2 rounded border border-purple-200">
-                                    v{doc.version}
-                                  </span>
-                                )}
                               </div>
-                              <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
-                                <span className="font-mono text-slate-600 font-semibold">{doc.documentCode}</span>
-                                <span className="truncate max-w-[150px]">{doc.fileName}</span>
+                              <div className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[180px]">
+                                {doc.folder_name || (currentFolderId ? currentFolderName : 'hợp đồng') || 'Root'}
                               </div>
                             </div>
                           </div>
                         </td>
 
-                        {/* Phân loại & Phòng ban */}
+                        {/* PHÂN LOẠI & Phòng ban */}
                         <td className="py-3 px-3">
-                          <div className="font-medium text-slate-800 text-[11px]">
-                            {doc.documentTypeName || 'Chung'}
+                          <div className="font-medium text-slate-800 text-xs">
+                            {doc.documentTypeName || 'Hợp đồng'}
                           </div>
-                          <div className="text-[10px] text-slate-400 truncate max-w-[120px]">
-                            {doc.departmentName || 'Toàn công ty'}
+                          <div className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[120px]">
+                            {doc.departmentName || 'Kinh doanh'}
                           </div>
                         </td>
 
-                        {/* Dung lượng */}
-                        <td className="py-3 px-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                        {/* DUNG LƯỢNG */}
+                        <td className="py-3 px-3 text-xs text-slate-600 whitespace-nowrap">
                           {formatSize(doc.fileSize)}
                         </td>
 
-                        {/* Thời hạn & Hiệu lực */}
+                        {/* THỜI HẠN & HIỆU LỰC */}
                         <td className="py-3 px-3 whitespace-nowrap">
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                              doc.status === 'ACTIVE'
-                                ? 'bg-emerald-50 text-emerald-700'
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              doc.status === 'EXPIRED'
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                 : doc.status === 'EXPIRING'
-                                ? 'bg-amber-50 text-amber-700'
-                                : 'bg-slate-100 text-slate-600'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             }`}
                           >
-                            {doc.status === 'ACTIVE'
-                              ? 'Hiệu lực'
+                            {doc.status === 'EXPIRED'
+                              ? 'Hết hạn'
                               : doc.status === 'EXPIRING'
                               ? 'Sắp hết hạn'
                               : doc.status === 'LIQUIDATED'
                               ? 'Đã thanh lý'
-                              : 'Hết hạn'}
+                              : 'Hiệu lực'}
                           </span>
                         </td>
 
-                        {/* Mức độ bảo mật */}
+                        {/* BẢO MẬT */}
                         <td className="py-3 px-3 whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               doc.securityLevel === 'CONFIDENTIAL'
                                 ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                : doc.securityLevel === 'INTERNAL'
-                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : doc.securityLevel === 'PUBLIC'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-blue-50 text-blue-700 border border-blue-200'
                             }`}
                           >
                             {doc.securityLevel === 'CONFIDENTIAL'
                               ? 'Mật'
-                              : doc.securityLevel === 'INTERNAL'
-                              ? 'Nội bộ'
-                              : 'Công khai'}
+                              : doc.securityLevel === 'PUBLIC'
+                              ? 'Công khai'
+                              : 'Nội bộ'}
                           </span>
                         </td>
 
-                        {/* Người tải */}
-                        <td className="py-3 px-3 whitespace-nowrap text-slate-600 text-xs">
-                          {doc.uploaderName || 'Admin'}
+                        {/* NGƯỜI TẢI */}
+                        <td className="py-3 px-3 whitespace-nowrap text-slate-700 text-xs">
+                          {doc.uploaderName || 'Hà Thị Quỳnh'}
                         </td>
 
                         {/* Thao tác trực tiếp */}
-                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
                           <div
-                            className="flex items-center justify-end gap-1"
+                            className="flex items-center justify-end"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {/* Preview button */}
-                            <button
-                              onClick={() => {
-                                setPreviewFile({
-                                  id: doc.id,
-                                  name: doc.name,
-                                  fileName: doc.fileName,
-                                  extension: doc.fileType,
-                                  url: `/api/documents/${doc.id}/file`,
-                                  previewUrl: `/api/documents/${doc.id}/file`,
-                                  hasPassword: doc.hasPassword,
-                                  isEncrypted: doc.hasPassword || doc.isEncrypted
-                                });
-                              }}
-                              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                              title="Xem trước tài liệu"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-
-                            {/* Download button */}
-                            <button
-                              onClick={() => handleDownload(doc)}
-                              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                              title="Tải về máy"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
-
-                            {/* More dropdown */}
                             <div className="relative">
                               <button
                                 onClick={() => setActionMenuOpenId(actionMenuOpenId === doc.id ? null : doc.id)}
-                                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                                className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                                title="Thao tác"
                               >
-                                <MoreVertical className="w-4 h-4" />
+                                <MoreHorizontal className="w-4 h-4" />
                               </button>
 
                               {actionMenuOpenId === doc.id && (
@@ -1716,29 +1759,29 @@ export const DocumentListPage: React.FC = () => {
           )}
 
           {/* Pagination Bar */}
-          <div className="p-3.5 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 mt-auto">
+          <div className="p-3.5 border-t border-slate-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 mt-auto">
             <div>
-              Hiển thị <span className="font-bold text-slate-700">{filteredDocuments.length}</span> /{' '}
-              <span className="font-bold text-slate-700">{total}</span> tài liệu
+              Hiển thị <span className="font-semibold text-slate-700">{filteredDocuments.length}</span> /{' '}
+              <span className="font-semibold text-slate-700">{total}</span> file
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <button
                 disabled={page <= 1}
                 onClick={() => fetchDocuments(page - 1)}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <span className="px-3 py-1 font-semibold text-slate-700">
-                Trang {page} / {totalPages}
-              </span>
+              <button className="w-7 h-7 bg-blue-600 text-white rounded-lg flex items-center justify-center font-bold text-xs shadow-xs">
+                {page}
+              </button>
               <button
                 disabled={page >= totalPages}
                 onClick={() => fetchDocuments(page + 1)}
-                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
               >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -1748,14 +1791,15 @@ export const DocumentListPage: React.FC = () => {
       {/* 3. RIGHT PANEL: Multi-utility File Inspector (Google Drive / MacOS Finder Style) */}
       {isInspectorOpen && (
         <aside className="w-80 border-l border-slate-200/80 bg-white flex flex-col shrink-0 overflow-y-auto z-20">
+          {/* Header Panel */}
           <div className="p-3.5 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-blue-600" />
-              <span className="font-bold text-xs text-slate-800">Thông tin & Tiện ích</span>
+              <span className="font-semibold text-xs text-slate-800">Thông tin & Tiện ích</span>
             </div>
             <button
               onClick={() => setIsInspectorOpen(false)}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               title="Đóng bảng chi tiết"
             >
               <X className="w-4 h-4" />
@@ -1763,11 +1807,19 @@ export const DocumentListPage: React.FC = () => {
           </div>
 
           {selectedDoc ? (
-            <div className="p-4 space-y-5 text-xs">
+            /* Khi người dùng click chọn 1 file cụ thể để xem tác vụ & chi tiết file */
+            <div className="p-4 space-y-4 text-xs flex-1 overflow-y-auto">
+              <button
+                onClick={() => setSelectedDoc(null)}
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 cursor-pointer"
+              >
+                ← Xem thông tin thư mục
+              </button>
+
               {/* File Icon Preview & Big Name */}
               <div className="flex flex-col items-center text-center p-4 bg-slate-50/70 rounded-2xl border border-slate-100">
-                {getFileIcon(selectedDoc.fileName, selectedDoc.fileType, 'w-14 h-14 text-sm')}
-                <h3 className="font-bold text-sm text-slate-800 mt-3 line-clamp-2" title={selectedDoc.name}>
+                {getFileIcon(selectedDoc.fileName, selectedDoc.fileType, 'w-12 h-12 text-sm')}
+                <h3 className="font-bold text-sm text-slate-800 mt-2.5 line-clamp-2" title={selectedDoc.name}>
                   {selectedDoc.name}
                 </h3>
                 <div className="text-[11px] text-slate-400 font-mono mt-0.5">
@@ -1775,7 +1827,7 @@ export const DocumentListPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Buttons Grid */}
+              {/* Tác vụ nhanh */}
               <div className="space-y-1.5">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                   Tác vụ nhanh
@@ -1829,22 +1881,6 @@ export const DocumentListPage: React.FC = () => {
                     <Users className="w-3.5 h-3.5 text-indigo-500" />
                     <span>Phân quyền</span>
                   </button>
-
-                  <button
-                    onClick={() => setVersionDoc(selectedDoc)}
-                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <History className="w-3.5 h-3.5 text-purple-500" />
-                    <span>Phiên bản (v{selectedDoc.version})</span>
-                  </button>
-
-                  <button
-                    onClick={() => setMoveItem({ item: selectedDoc, type: 'file' })}
-                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Move className="w-3.5 h-3.5 text-blue-500" />
-                    <span>Di chuyển</span>
-                  </button>
                 </div>
 
                 <button
@@ -1856,237 +1892,183 @@ export const DocumentListPage: React.FC = () => {
                 </button>
               </div>
 
-              {/* Document Details Metadata */}
-              <div className="space-y-3 pt-2 border-t border-slate-100">
+              {/* Chi tiết file */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   Chi tiết hồ sơ
                 </div>
 
-                <div className="space-y-2 text-slate-600">
+                <div className="space-y-1.5 text-slate-600">
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-400">Dung lượng:</span>
                     <span className="font-semibold text-slate-700">{formatSize(selectedDoc.fileSize)}</span>
                   </div>
-
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-400">Định dạng:</span>
                     <span className="font-semibold uppercase text-slate-700">{selectedDoc.fileType}</span>
                   </div>
-
                   <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-400">Loại văn bản:</span>
-                    <span className="font-semibold text-slate-700">{selectedDoc.documentTypeName || 'Chung'}</span>
+                    <span className="text-slate-400">Phân loại:</span>
+                    <span className="font-semibold text-slate-700">{selectedDoc.documentTypeName || 'Hợp đồng'}</span>
                   </div>
-
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-400">Phòng ban:</span>
-                    <span className="font-semibold text-slate-700">{selectedDoc.departmentName || 'Nội bộ'}</span>
-                  </div>
-
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-400">Bảo mật:</span>
-                    <span className="font-semibold text-slate-700">{selectedDoc.securityLevel}</span>
-                  </div>
-
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-400">Người tải:</span>
                     <span className="font-semibold text-slate-700">{selectedDoc.uploaderName || 'Admin'}</span>
                   </div>
-
-                  <div className="flex justify-between py-1">
-                    <span className="text-slate-400">Ngày tạo:</span>
-                    <span className="font-semibold text-slate-700">
-                      {selectedDoc.createdAt ? new Date(selectedDoc.createdAt).toLocaleDateString('vi-VN') : '-'}
-                    </span>
-                  </div>
                 </div>
               </div>
             </div>
-          ) : selectedFolder ? (
-            <div className="p-4 space-y-5 text-xs">
-              {/* Folder Icon Preview & Big Name */}
-              <div className="flex flex-col items-center text-center p-4 bg-amber-50/70 rounded-2xl border border-amber-200/70 relative">
-                <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-500 shadow-xs">
-                  <Folder className="w-8 h-8 fill-amber-400/30 text-amber-600" />
-                </div>
-                <h3 className="font-bold text-sm text-slate-800 mt-3 line-clamp-2" title={selectedFolder.name}>
-                  {selectedFolder.name}
-                </h3>
-                <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                  {selectedFolder.code || `FLD-${selectedFolder.id}`}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200/60">
-                    {folderInspectFiles.length || selectedFolder.file_count || 0} tài liệu / tệp
-                  </span>
-                  {selectedFolder.total_size > 0 && (
-                    <span className="text-[11px] text-slate-500 font-mono font-medium">
-                      {formatSize(selectedFolder.total_size)}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Action Buttons Grid */}
-              <div className="space-y-1.5">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Tác vụ thư mục
-                </div>
-
-                <button
-                  onClick={() => handleSelectFolder(String(selectedFolder.id))}
-                  className="w-full p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
-                >
-                  <FolderOpen className="w-4 h-4" />
-                  <span>Mở thư mục này</span>
-                </button>
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
+          ) : (
+            /* GIAO DIỆN CHÍNH THỐNG THEO ẢNH: Thông tin thư mục + Danh sách file trong thư mục */
+            <div className="p-4 space-y-6 text-xs flex-1 overflow-y-auto">
+              {/* 1. KHỐI THÔNG TIN THƯ MỤC */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                  <div className="flex items-center gap-2 font-bold text-xs text-slate-800">
+                    <Folder className="w-4 h-4 text-blue-600" />
+                    <span>Thông tin thư mục</span>
+                  </div>
                   <button
                     onClick={() => {
-                      setCreateFolderParentId(String(selectedFolder.id));
+                      setCreateFolderParentId(currentFolderId);
                       setIsCreateFolderOpen(true);
                     }}
-                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                    title="Tạo thư mục mới"
                   >
-                    <FolderPlus className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Tạo thư mục con</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.multiple = true;
-                      input.onchange = (e: any) => {
-                        if (e.target.files) handleQuickUploadToFolder(e.target.files, selectedFolder.id);
-                      };
-                      input.click();
-                    }}
-                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <UploadCloud className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Tải tệp vào đây</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleRenameFolder(selectedFolder)}
-                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Edit2 className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Đổi tên</span>
-                  </button>
-
-                  <button
-                    onClick={() => setMoveItem({ item: selectedFolder, type: 'folder' })}
-                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Move className="w-3.5 h-3.5 text-blue-500" />
-                    <span>Di chuyển</span>
+                    <Plus className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                <button
-                  onClick={() => handleDeleteFolder(selectedFolder)}
-                  className="w-full mt-1 p-2 text-rose-600 hover:bg-rose-50 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Xóa thư mục</span>
-                </button>
+                {/* Bảng thuộc tính 2 cột căn dấu hai chấm */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-baseline">
+                    <span className="w-24 text-slate-500 shrink-0">Tên thư mục</span>
+                    <span className="text-slate-400 mr-2 shrink-0">:</span>
+                    <span className="font-semibold text-blue-700 truncate">
+                      {selectedFolder?.name || (currentFolderId ? currentFolderName : 'hợp đồng')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline">
+                    <span className="w-24 text-slate-500 shrink-0">Đường dẫn</span>
+                    <span className="text-slate-400 mr-2 shrink-0">:</span>
+                    <span className="font-semibold text-blue-700 truncate">
+                      {selectedFolder?.path || (currentFolderId ? `/${currentFolderName}` : '/hợp đồng')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline">
+                    <span className="w-24 text-slate-500 shrink-0">Số lượng tệp</span>
+                    <span className="text-slate-400 mr-2 shrink-0">:</span>
+                    <span className="text-slate-700 font-medium">
+                      {folderInspectFiles.length || selectedFolder?.file_count || filteredDocuments.length || 0}
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline">
+                    <span className="w-24 text-slate-500 shrink-0">Dung lượng</span>
+                    <span className="text-slate-400 mr-2 shrink-0">:</span>
+                    <span className="text-slate-700 font-medium">
+                      {formatSize(
+                        selectedFolder?.total_size ||
+                        folderInspectFiles.reduce((acc, f) => acc + (f.size || f.fileSize || 0), 0) ||
+                        filteredDocuments.reduce((acc, f) => acc + (f.fileSize || 0), 0)
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline">
+                    <span className="w-24 text-slate-500 shrink-0">Người tạo</span>
+                    <span className="text-slate-400 mr-2 shrink-0">:</span>
+                    <span className="text-slate-700 font-medium">
+                      {selectedFolder?.creator_name || selectedFolder?.uploaderName || user?.fullName || (user as any)?.full_name || 'Hà Thị Quỳnh'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline">
+                    <span className="w-24 text-slate-500 shrink-0">Ngày tạo</span>
+                    <span className="text-slate-400 mr-2 shrink-0">:</span>
+                    <span className="text-slate-700 font-medium">
+                      {formatDateTime(selectedFolder?.created_at || selectedFolder?.createdAt)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-baseline">
+                    <span className="w-24 text-slate-500 shrink-0">Mô tả</span>
+                    <span className="text-slate-400 mr-2 shrink-0">:</span>
+                    <span className="text-slate-700 font-medium">
+                      {selectedFolder?.description || (currentFolderId ? 'Các file hợp đồng liên quan' : 'Các file hợp đồng liên quan')}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              {/* LIST OF FILES INSIDE THIS FOLDER */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Danh sách tệp tin ({folderInspectFiles.length})</span>
-                  </div>
-                  {loadingFolderInspect && (
-                    <RefreshCw className="w-3 h-3 text-blue-600 animate-spin" />
-                  )}
+              {/* 2. KHỐI DANH SÁCH FILE TRONG THƯ MỤC */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center gap-2 font-bold text-xs text-slate-800 pb-1 border-b border-slate-100">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span>Danh sách file trong thư mục</span>
                 </div>
 
                 {loadingFolderInspect ? (
-                  <div className="py-8 text-center text-slate-400 flex flex-col items-center gap-2">
-                    <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />
-                    <span>Đang tải danh sách tệp tin...</span>
+                  <div className="py-6 text-center text-slate-400 flex flex-col items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                    <span className="text-xs">Đang tải danh sách tệp...</span>
                   </div>
-                ) : folderInspectFiles.length === 0 ? (
-                  <div className="p-4 bg-slate-50/70 rounded-2xl border border-slate-100 text-center space-y-2">
-                    <p className="text-slate-500 font-medium">Thư mục chưa có tệp tin nào</p>
-                    <p className="text-[10px] text-slate-400">
-                      Bấm nút "Tải tệp vào đây" hoặc kéo thả tệp vào thư mục này để bắt đầu.
-                    </p>
+                ) : (folderInspectFiles.length === 0 && filteredDocuments.length === 0) ? (
+                  <div className="py-6 text-center text-slate-400 text-xs">
+                    Chưa có tệp tin nào trong thư mục này
                   </div>
                 ) : (
-                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 border border-slate-100 rounded-2xl bg-slate-50/30 overflow-hidden">
-                    {folderInspectFiles.map((f: any) => (
+                  <div className="space-y-1">
+                    {(folderInspectFiles.length > 0 ? folderInspectFiles : filteredDocuments).map((file: any) => (
                       <div
-                        key={f.id}
-                        className="p-2.5 flex items-center justify-between gap-2 hover:bg-blue-50/50 transition-colors group/item"
+                        key={file.id}
+                        onClick={() => {
+                          setPreviewFile({
+                            id: file.id,
+                            name: file.name,
+                            fileName: file.fileName,
+                            extension: file.fileType || file.extension,
+                            url: `/api/documents/${file.id}/file`,
+                            previewUrl: `/api/documents/${file.id}/file`,
+                            hasPassword: file.hasPassword,
+                            isEncrypted: file.hasPassword || file.isEncrypted
+                          });
+                        }}
+                        className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group"
                       >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          {getFileIcon(f.fileName, f.fileType, 'w-6 h-6 text-[9px] shrink-0')}
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <FileMiniBadge file={file} size="md" />
                           <div className="min-w-0 flex-1">
                             <div
-                              onClick={() => {
-                                setSelectedDoc(f);
-                                setSelectedFolder(null);
-                              }}
-                              className="font-medium text-slate-800 text-[11px] truncate group-hover/item:text-blue-600 cursor-pointer"
-                              title={f.name}
+                              className="font-bold text-xs text-slate-800 truncate group-hover:text-blue-600 transition-colors"
+                              title={file.name}
                             >
-                              {f.name}
+                              {file.name}
                             </div>
-                            <div className="text-[9px] text-slate-400 flex items-center gap-1.5">
-                              <span className="font-mono">{formatSize(f.fileSize || f.size)}</span>
-                              {f.documentTypeName && <span>• {f.documentTypeName}</span>}
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                              {formatSize(file.size || file.fileSize)}
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => {
-                              setPreviewFile({
-                                id: f.id,
-                                name: f.name,
-                                fileName: f.fileName,
-                                extension: f.fileType,
-                                url: `/api/documents/${f.id}/file`,
-                                previewUrl: `/api/documents/${f.id}/file`,
-                                hasPassword: f.hasPassword,
-                                isEncrypted: f.hasPassword || f.isEncrypted
-                              });
-                            }}
-                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-white rounded transition-colors cursor-pointer"
-                            title="Xem trước"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDownload(f)}
-                            className="p-1 text-slate-400 hover:text-slate-800 hover:bg-white rounded transition-colors cursor-pointer"
-                            title="Tải về"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
+                        <div className="text-xs text-slate-400 font-medium shrink-0 pl-3">
+                          {getFileTypeLabel(file)}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-xs text-slate-400 space-y-2">
-              <FolderOpen className="w-10 h-10 text-slate-300" />
-              <div>
-                <p className="font-semibold text-slate-600">Chưa chọn tài liệu hoặc thư mục</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Nhấp vào một thư mục hoặc tài liệu trong danh sách để xem thông tin chi tiết và danh sách tệp tin.
-                </p>
+
+              {/* 3. THẺ THÔNG BÁO XANH DƯƠNG NHẠT */}
+              <div className="mt-4 p-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-start gap-2.5 text-xs text-blue-700">
+                <Info className="w-4 h-4 shrink-0 mt-0.5 text-blue-500" />
+                <div className="text-[11px] leading-relaxed">
+                  Nhấn vào tệp để xem chi tiết, tải xuống hoặc chia sẻ.
+                </div>
               </div>
             </div>
           )}

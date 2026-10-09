@@ -20,10 +20,13 @@ class FolderController {
         try {
             const userRole = req.user?.role_code || 'ADMIN';
             const userId = req.user?.id || null;
-            const tree = await folderServices.getFolderTree(userRole, userId);
+            const result = await folderServices.getFolderTree(userRole, userId);
+            const tree = Array.isArray(result) ? result : (result.nodes || []);
+            const rootFiles = result.rootFiles || [];
             res.status(200).json({
                 success: true,
-                tree
+                tree,
+                rootFiles
             });
         } catch (error) {
             console.error('getTree error:', error);

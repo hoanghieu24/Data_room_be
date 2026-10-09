@@ -136,7 +136,9 @@ class DmsController {
 
       // Bộ lọc theo Thư mục
       const targetFolderId = folder_id || folderId;
-      if (targetFolderId && targetFolderId !== 'all') {
+      if (targetFolderId === 'root' || targetFolderId === 'null') {
+        whereConditions.push('(d.folder_id IS NULL OR d.folder_id = 1)');
+      } else if (targetFolderId && targetFolderId !== 'all') {
         whereConditions.push('d.folder_id = ?');
         params.push(Number(targetFolderId));
       }
