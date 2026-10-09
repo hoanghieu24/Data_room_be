@@ -18,11 +18,13 @@ import {
 import api from '../../services/api';
 
 interface SidebarProps {
+  isOpen?: boolean;
   isMobileOpen?: boolean;
   onClose?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen: propIsOpen, isMobileOpen = false, onClose }) => {
+  const isOpen = propIsOpen !== undefined ? propIsOpen : isMobileOpen;
   const location = useLocation();
   const [stats, setStats] = useState<{ totalStorageBytes: number; totalFiles: number }>({
     totalStorageBytes: 0,
@@ -62,7 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
   return (
     <>
       {/* Mobile Backdrop Overlay */}
-      {isMobileOpen && (
+      {isOpen && (
         <div
           onClick={onClose}
           className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 lg:hidden transition-opacity duration-300"
@@ -73,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
       {/* Sidebar Drawer */}
       <aside
         className={`w-64 bg-slate-900 text-slate-300 flex flex-col h-screen fixed left-0 top-0 border-r border-slate-800/80 z-50 select-none transition-transform duration-300 ease-in-out ${
-          isMobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'
+          isOpen ? 'translate-x-0 shadow-2xl lg:shadow-none' : '-translate-x-full'
         }`}
       >
         {/* Brand Header */}
@@ -97,8 +99,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen = false, onClose 
 
           <button
             onClick={onClose}
-            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            title="Đóng menu"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Đóng / Thu gọn menu bên trái"
           >
             <X className="w-5 h-5" />
           </button>

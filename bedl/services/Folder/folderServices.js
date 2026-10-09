@@ -42,22 +42,27 @@ class FolderServices {
             breadcrumbs = [{ id: null, name: 'Data Room' }, ...crumbs];
         }
 
-        // Subfolders query
-        let folderQuery = `SELECT * FROM folders WHERE is_active = 1 AND `;
+        // Subfolders query with file count and total size
+        let folderQuery = `
+            SELECT f.*,
+                (SELECT COUNT(*) FROM documents d WHERE d.folder_id = f.id AND d.is_active = 1 AND d.deleted_at IS NULL) AS file_count,
+                COALESCE((SELECT SUM(d.file_size) FROM documents d WHERE d.folder_id = f.id AND d.is_active = 1 AND d.deleted_at IS NULL), 0) AS total_size
+            FROM folders f
+            WHERE f.is_active = 1 AND `;
         const folderParams = [];
         if (folderId) {
-            folderQuery += `parent_id = ?`;
+            folderQuery += `f.parent_id = ?`;
             folderParams.push(folderId);
         } else {
-            folderQuery += `parent_id IS NULL`;
+            folderQuery += `f.parent_id IS NULL`;
         }
 
         if (options.search) {
-            folderQuery += ` AND name LIKE ?`;
+            folderQuery += ` AND f.name LIKE ?`;
             folderParams.push(`%${options.search}%`);
         }
 
-        folderQuery += ` ORDER BY name ASC`;
+        folderQuery += ` ORDER BY f.name ASC`;
         const [rawFolders] = await db.query(folderQuery, folderParams);
 
         // Filter subfolders by access permission
@@ -70,16 +75,23 @@ class FolderServices {
             accessLevel: f.access_level,
             allowedRoles: typeof f.allowed_roles === 'string' ? JSON.parse(f.allowed_roles) : f.allowed_roles,
             allowedUsers: typeof f.allowed_users === 'string' ? JSON.parse(f.allowed_users) : f.allowed_users,
+            file_count: Number(f.file_count) || 0,
+            fileCount: Number(f.file_count) || 0,
+            total_size: Number(f.total_size) || 0,
+            totalSize: Number(f.total_size) || 0,
             createdAt: f.created_at,
             updatedAt: f.updated_at
         }));
 
-        // Documents query
+        // Documents query with full metadata
         let docQuery = `
-            SELECT d.*, u.username as uploaded_by_username, u.full_name as uploaded_by_name
+            SELECT d.*, u.username as uploaded_by_username, u.full_name as uploaded_by_name,
+                   dt.name as document_type_name, dept.name as department_name
             FROM documents d
             LEFT JOIN users u ON u.id = d.uploaded_by
-            WHERE d.is_active = 1 AND `;
+            LEFT JOIN document_types dt ON dt.id = d.document_type_id
+            LEFT JOIN departments dept ON dept.id = d.department_id
+            WHERE d.is_active = 1 AND d.deleted_at IS NULL AND `;
         const docParams = [];
         if (folderId) {
             docQuery += `d.folder_id = ?`;
@@ -117,10 +129,15 @@ class FolderServices {
                 fileType: ext,
                 folderId: d.folder_id,
                 size: d.file_size || 0,
+                fileSize: d.file_size || 0,
                 mimeType: d.mime_type,
                 version: d.version || 1,
                 currentVersion: d.version || 1,
                 accessLevel: d.access_level,
+                documentTypeName: d.document_type_name || 'Chung',
+                departmentName: d.department_name || 'Nội bộ',
+                status: d.status || 'ACTIVE',
+                securityLevel: d.security_level || 'INTERNAL',
                 isEncrypted: !!d.is_encrypted || !!d.access_password_hash,
                 hasPassword: !!d.access_password_hash,
                 isLocked: !!(d.metadata && typeof d.metadata === 'object' && d.metadata.isLocked),
@@ -128,11 +145,12 @@ class FolderServices {
                 downloadCount: d.download_count || 0,
                 viewCount: d.view_count || 0,
                 url: d.file_path,
-                previewUrl: `/api/files/${d.id}/raw`,
-                downloadUrl: `/api/files/${d.id}/download`,
+                previewUrl: `/api/documents/${d.id}/file`,
+                downloadUrl: `/api/documents/${d.id}/download`,
                 createdAt: d.created_at,
                 updatedAt: d.updated_at,
                 uploadedBy: d.uploaded_by,
+                uploaderName: d.uploaded_by_name || d.uploaded_by_username || 'Admin',
                 uploader: {
                     id: d.uploaded_by,
                     name: d.uploaded_by_name || d.uploaded_by_username || 'Admin'

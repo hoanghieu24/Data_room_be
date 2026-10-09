@@ -56,6 +56,7 @@ import { DocumentVersionsModal } from '../components/dms/DocumentVersionsModal';
 import { DocumentPermissionsModal } from '../components/dms/DocumentPermissionsModal';
 import { FilePreviewModal } from '../components/dataroom/FilePreviewModal';
 import { SetPasswordModal } from '../components/dataroom/SetPasswordModal';
+import { SmartDocumentManagerModal } from '../components/dms/SmartDocumentManagerModal';
 
 export const DocumentListPage: React.FC = () => {
   const { user } = useAuth();
@@ -90,6 +91,10 @@ export const DocumentListPage: React.FC = () => {
 
   // Inspector & selection state
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<any | null>(null);
+  const [folderInspectFiles, setFolderInspectFiles] = useState<any[]>([]);
+  const [loadingFolderInspect, setLoadingFolderInspect] = useState(false);
+  const [isSmartManagerOpen, setIsSmartManagerOpen] = useState(false);
   const [selectedDocIds, setSelectedDocIds] = useState<number[]>([]);
 
   // Drag & drop state for direct file upload from desktop
@@ -317,7 +322,66 @@ export const DocumentListPage: React.FC = () => {
     }
     setSearchParams(newParams);
     setSelectedDoc(null);
+    setSelectedFolder(null);
     setSelectedDocIds([]);
+  };
+
+  const handleInspectFolder = async (folder: any) => {
+    setSelectedDoc(null);
+    setSelectedFolder(folder);
+    setIsInspectorOpen(true);
+    setLoadingFolderInspect(true);
+    try {
+      const res = await api.get(`/folders/${folder.id}/contents`);
+      if (res.data.success) {
+        setFolderInspectFiles(res.data.files || []);
+        setSelectedFolder((prev: any) => ({
+          ...prev,
+          file_count: res.data.files?.length || 0,
+          total_size: (res.data.files || []).reduce((acc: number, f: any) => acc + (f.size || f.fileSize || 0), 0)
+        }));
+      }
+    } catch (e) {
+      console.error('Lỗi tải tệp trong thư mục:', e);
+    } finally {
+      setLoadingFolderInspect(false);
+    }
+  };
+
+  const handleQuickUploadToFolder = async (files: FileList | File[], targetFolderId?: string | number) => {
+    if (!files || files.length === 0) return;
+    const fileArray = Array.from(files);
+    setUploadingQuick(true);
+    let successCount = 0;
+
+    for (const file of fileArray) {
+      const formData = new FormData();
+      formData.append('file', file);
+      const folderTarget = targetFolderId || currentFolderId;
+      if (folderTarget) {
+        formData.append('folder_id', String(folderTarget));
+      }
+      formData.append('name', file.name.replace(/\.[^/.]+$/, ''));
+      try {
+        const res = await api.post('/documents', formData);
+        if (res.data.success) successCount++;
+      } catch (err: any) {
+        console.error('Lỗi khi tải file:', err);
+      }
+    }
+
+    setUploadingQuick(false);
+    if (successCount > 0) {
+      toast('success', `Đã tải lên thành công ${successCount} tệp!`);
+      fetchDocuments(1);
+      fetchFolderContents();
+      fetchTree();
+      if (selectedFolder && String(selectedFolder.id) === String(targetFolderId)) {
+        handleInspectFolder(selectedFolder);
+      }
+    } else {
+      toast('error', 'Tải tệp thất bại. Vui lòng thử lại.');
+    }
   };
 
   // Up 1 level parent navigation
@@ -890,6 +954,16 @@ export const DocumentListPage: React.FC = () => {
               )}
             </div>
 
+            {/* SMART DOCUMENT MANAGEMENT BUTTON */}
+            <button
+              onClick={() => setIsSmartManagerOpen(true)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-700 hover:to-blue-800 text-white transition-all shadow-xs cursor-pointer group"
+              title="Quản lý tài liệu thông minh & Kiểm toán rủi ro"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
+              <span className="hidden sm:inline">Quản lý thông minh</span>
+            </button>
+
             {/* View Switcher: Table / Grid */}
             <div className="flex items-center border border-slate-200 rounded-xl p-0.5 bg-slate-50 ml-1">
               <button
@@ -1128,88 +1202,123 @@ export const DocumentListPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              {folderData.subfolders.map((folder: any) => (
-                <div
-                  key={folder.id}
-                  onClick={() => handleSelectFolder(String(folder.id))}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleDropOnFolder(String(folder.id));
-                  }}
-                  className="p-3 bg-white hover:bg-amber-50/30 rounded-2xl border border-slate-200/80 hover:border-amber-300 shadow-2xs hover:shadow-xs transition-all cursor-pointer group flex flex-col justify-between relative"
-                >
-                  <div className="flex items-start justify-between gap-1">
-                    <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform">
-                      <Folder className="w-5 h-5 fill-amber-400/30 text-amber-600" />
-                    </div>
+              {folderData.subfolders.map((folder: any) => {
+                const isSelectedFolder = selectedFolder?.id === folder.id;
+                return (
+                  <div
+                    key={folder.id}
+                    onClick={() => handleInspectFolder(folder)}
+                    onDoubleClick={() => handleSelectFolder(String(folder.id))}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDropOnFolder(String(folder.id));
+                    }}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer group flex flex-col justify-between relative ${
+                      isSelectedFolder
+                        ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-500/40 shadow-xs'
+                        : 'bg-white hover:bg-amber-50/30 border-slate-200/80 hover:border-amber-300 shadow-2xs hover:shadow-xs'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-1">
+                      <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform">
+                        <Folder className="w-5 h-5 fill-amber-400/30 text-amber-600" />
+                      </div>
 
-                    {/* 3-Dots Folder Menu */}
-                    <div className="relative">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setFolderMenuOpenId(folderMenuOpenId === folder.id ? null : folder.id);
-                        }}
-                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                      >
-                        <MoreVertical className="w-3.5 h-3.5" />
-                      </button>
-
-                      {folderMenuOpenId === folder.id && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-30 text-left text-xs"
+                      {/* 3-Dots Folder Menu */}
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFolderMenuOpenId(folderMenuOpenId === folder.id ? null : folder.id);
+                          }}
+                          className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
                         >
-                          <button
-                            onClick={() => {
-                              setFolderMenuOpenId(null);
-                              handleRenameFolder(folder);
-                            }}
-                            className="w-full px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                          >
-                            <Edit2 className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Đổi tên</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              setFolderMenuOpenId(null);
-                              setMoveItem({ item: folder, type: 'folder' });
-                            }}
-                            className="w-full px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                          >
-                            <Move className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Di chuyển</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              setFolderMenuOpenId(null);
-                              handleDeleteFolder(folder);
-                            }}
-                            className="w-full px-3 py-1.5 text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Xóa thư mục</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                          <MoreVertical className="w-3.5 h-3.5" />
+                        </button>
 
-                  <div className="mt-2.5">
-                    <div className="font-bold text-xs text-slate-800 truncate group-hover:text-amber-800 transition-colors" title={folder.name}>
-                      {folder.name}
+                        {folderMenuOpenId === folder.id && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-30 text-left text-xs"
+                          >
+                            <button
+                              onClick={() => {
+                                setFolderMenuOpenId(null);
+                                handleSelectFolder(String(folder.id));
+                              }}
+                              className="w-full px-3 py-1.5 text-blue-600 hover:bg-blue-50 flex items-center gap-2 cursor-pointer font-semibold"
+                            >
+                              <FolderOpen className="w-3.5 h-3.5" />
+                              <span>Mở thư mục</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setFolderMenuOpenId(null);
+                                handleInspectFolder(folder);
+                              }}
+                              className="w-full px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Xem tệp tin</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setFolderMenuOpenId(null);
+                                handleRenameFolder(folder);
+                              }}
+                              className="w-full px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Đổi tên</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setFolderMenuOpenId(null);
+                                setMoveItem({ item: folder, type: 'folder' });
+                              }}
+                              className="w-full px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                            >
+                              <Move className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Di chuyển</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setFolderMenuOpenId(null);
+                                handleDeleteFolder(folder);
+                              }}
+                              className="w-full px-3 py-1.5 text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Xóa thư mục</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">
-                      {folder.file_count || 0} tài liệu
+
+                    <div className="mt-2.5">
+                      <div className="font-bold text-xs text-slate-800 truncate group-hover:text-amber-800 transition-colors" title={folder.name}>
+                        {folder.name}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5 flex items-center justify-between">
+                        <span className="font-medium text-slate-500">
+                          {folder.file_count || 0} tài liệu
+                        </span>
+                        {folder.total_size > 0 && (
+                          <span className="text-[9px] text-slate-400 font-mono">
+                            {formatSize(folder.total_size)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1282,6 +1391,7 @@ export const DocumentListPage: React.FC = () => {
                         }}
                         onDragEnd={() => setDragItem(null)}
                         onClick={() => {
+                          setSelectedFolder(null);
                           setSelectedDoc(doc);
                           setIsInspectorOpen(true);
                         }}
@@ -1529,6 +1639,7 @@ export const DocumentListPage: React.FC = () => {
                   <div
                     key={doc.id}
                     onClick={() => {
+                      setSelectedFolder(null);
                       setSelectedDoc(doc);
                       setIsInspectorOpen(true);
                     }}
@@ -1791,13 +1902,190 @@ export const DocumentListPage: React.FC = () => {
                 </div>
               </div>
             </div>
+          ) : selectedFolder ? (
+            <div className="p-4 space-y-5 text-xs">
+              {/* Folder Icon Preview & Big Name */}
+              <div className="flex flex-col items-center text-center p-4 bg-amber-50/70 rounded-2xl border border-amber-200/70 relative">
+                <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-500 shadow-xs">
+                  <Folder className="w-8 h-8 fill-amber-400/30 text-amber-600" />
+                </div>
+                <h3 className="font-bold text-sm text-slate-800 mt-3 line-clamp-2" title={selectedFolder.name}>
+                  {selectedFolder.name}
+                </h3>
+                <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                  {selectedFolder.code || `FLD-${selectedFolder.id}`}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200/60">
+                    {folderInspectFiles.length || selectedFolder.file_count || 0} tài liệu / tệp
+                  </span>
+                  {selectedFolder.total_size > 0 && (
+                    <span className="text-[11px] text-slate-500 font-mono font-medium">
+                      {formatSize(selectedFolder.total_size)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons Grid */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  Tác vụ thư mục
+                </div>
+
+                <button
+                  onClick={() => handleSelectFolder(String(selectedFolder.id))}
+                  className="w-full p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  <span>Mở thư mục này</span>
+                </button>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={() => {
+                      setCreateFolderParentId(String(selectedFolder.id));
+                      setIsCreateFolderOpen(true);
+                    }}
+                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Tạo thư mục con</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.multiple = true;
+                      input.onchange = (e: any) => {
+                        if (e.target.files) handleQuickUploadToFolder(e.target.files, selectedFolder.id);
+                      };
+                      input.click();
+                    }}
+                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Tải tệp vào đây</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleRenameFolder(selectedFolder)}
+                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Đổi tên</span>
+                  </button>
+
+                  <button
+                    onClick={() => setMoveItem({ item: selectedFolder, type: 'folder' })}
+                    className="p-2 border border-slate-200 hover:bg-slate-50 rounded-xl font-medium text-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Move className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Di chuyển</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => handleDeleteFolder(selectedFolder)}
+                  className="w-full mt-1 p-2 text-rose-600 hover:bg-rose-50 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa thư mục</span>
+                </button>
+              </div>
+
+              {/* LIST OF FILES INSIDE THIS FOLDER */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Danh sách tệp tin ({folderInspectFiles.length})</span>
+                  </div>
+                  {loadingFolderInspect && (
+                    <RefreshCw className="w-3 h-3 text-blue-600 animate-spin" />
+                  )}
+                </div>
+
+                {loadingFolderInspect ? (
+                  <div className="py-8 text-center text-slate-400 flex flex-col items-center gap-2">
+                    <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />
+                    <span>Đang tải danh sách tệp tin...</span>
+                  </div>
+                ) : folderInspectFiles.length === 0 ? (
+                  <div className="p-4 bg-slate-50/70 rounded-2xl border border-slate-100 text-center space-y-2">
+                    <p className="text-slate-500 font-medium">Thư mục chưa có tệp tin nào</p>
+                    <p className="text-[10px] text-slate-400">
+                      Bấm nút "Tải tệp vào đây" hoặc kéo thả tệp vào thư mục này để bắt đầu.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 border border-slate-100 rounded-2xl bg-slate-50/30 overflow-hidden">
+                    {folderInspectFiles.map((f: any) => (
+                      <div
+                        key={f.id}
+                        className="p-2.5 flex items-center justify-between gap-2 hover:bg-blue-50/50 transition-colors group/item"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {getFileIcon(f.fileName, f.fileType, 'w-6 h-6 text-[9px] shrink-0')}
+                          <div className="min-w-0 flex-1">
+                            <div
+                              onClick={() => {
+                                setSelectedDoc(f);
+                                setSelectedFolder(null);
+                              }}
+                              className="font-medium text-slate-800 text-[11px] truncate group-hover/item:text-blue-600 cursor-pointer"
+                              title={f.name}
+                            >
+                              {f.name}
+                            </div>
+                            <div className="text-[9px] text-slate-400 flex items-center gap-1.5">
+                              <span className="font-mono">{formatSize(f.fileSize || f.size)}</span>
+                              {f.documentTypeName && <span>• {f.documentTypeName}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => {
+                              setPreviewFile({
+                                id: f.id,
+                                name: f.name,
+                                fileName: f.fileName,
+                                extension: f.fileType,
+                                url: `/api/documents/${f.id}/file`,
+                                previewUrl: `/api/documents/${f.id}/file`,
+                                hasPassword: f.hasPassword,
+                                isEncrypted: f.hasPassword || f.isEncrypted
+                              });
+                            }}
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-white rounded transition-colors cursor-pointer"
+                            title="Xem trước"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDownload(f)}
+                            className="p-1 text-slate-400 hover:text-slate-800 hover:bg-white rounded transition-colors cursor-pointer"
+                            title="Tải về"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-xs text-slate-400 space-y-2">
               <FolderOpen className="w-10 h-10 text-slate-300" />
               <div>
-                <p className="font-semibold text-slate-600">Chưa chọn tài liệu nào</p>
+                <p className="font-semibold text-slate-600">Chưa chọn tài liệu hoặc thư mục</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Nhấp vào một tài liệu trong danh sách để xem chi tiết và các tác vụ nhanh.
+                  Nhấp vào một thư mục hoặc tài liệu trong danh sách để xem thông tin chi tiết và danh sách tệp tin.
                 </p>
               </div>
             </div>
@@ -1938,6 +2226,37 @@ export const DocumentListPage: React.FC = () => {
           file={passwordDoc}
           onSuccess={() => {
             fetchDocuments(page);
+          }}
+        />
+      )}
+
+      {isSmartManagerOpen && (
+        <SmartDocumentManagerModal
+          isOpen={isSmartManagerOpen}
+          onClose={() => setIsSmartManagerOpen(false)}
+          documents={documents}
+          onRefresh={() => fetchDocuments(page)}
+          onPreview={(doc) => {
+            setPreviewFile({
+              id: doc.id,
+              name: doc.name,
+              fileName: doc.fileName,
+              extension: doc.fileType,
+              url: `/api/documents/${doc.id}/file`,
+              previewUrl: `/api/documents/${doc.id}/file`,
+              hasPassword: doc.hasPassword,
+              isEncrypted: doc.hasPassword || doc.isEncrypted
+            });
+          }}
+          onSetPassword={(doc) => {
+            setPasswordDoc(doc);
+            setIsPasswordModalOpen(true);
+          }}
+          onSelectDoc={(doc) => {
+            setSelectedDoc(doc);
+            setSelectedFolder(null);
+            setIsInspectorOpen(true);
+            setIsSmartManagerOpen(false);
           }}
         />
       )}

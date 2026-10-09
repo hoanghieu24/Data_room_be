@@ -19,7 +19,7 @@ import { DocumentTypesPage } from './pages/DocumentTypesPage';
 
 const ProtectedLayout: React.FC = () => {
   const { user, loading } = useAuth();
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   if (loading) {
     return (
@@ -38,14 +38,15 @@ const ProtectedLayout: React.FC = () => {
     <div className="min-h-screen flex bg-slate-50 relative">
       {/* Responsive Sidebar */}
       <Sidebar
-        isMobileOpen={mobileSidebarOpen}
-        onClose={() => setMobileSidebarOpen(false)}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Main Page Content - takes 100% on mobile, indented by 64 on lg screens */}
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen min-w-0">
+      {/* Main Page Content - takes 100% when sidebar is closed, indented by 64 on lg screens when open */}
+      <div className={`flex-1 flex flex-col min-h-screen min-w-0 transition-all duration-300 ease-in-out ${sidebarOpen ? 'lg:ml-64' : 'ml-0'}`}>
         <Navbar
-          onToggleMobileSidebar={() => setMobileSidebarOpen((prev) => !prev)}
+          isSidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
         />
         <main className="flex-1 min-w-0 overflow-x-hidden">
           <Routes>

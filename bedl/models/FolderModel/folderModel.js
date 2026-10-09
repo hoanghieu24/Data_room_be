@@ -3,12 +3,14 @@ const db = require("../../db");
 class FolderModel {
     static async findAll() {
         const [rows] = await db.query(
-            `SELECT id, folder_code, name, description, parent_id, path, access_level, 
-                    allowed_roles, allowed_users, sort_order, is_active, created_by, 
-                    created_at, updated_at
-             FROM folders
-             WHERE is_active = 1
-             ORDER BY sort_order ASC, name ASC`
+            `SELECT f.id, f.folder_code, f.name, f.description, f.parent_id, f.path, f.access_level, 
+                    f.allowed_roles, f.allowed_users, f.sort_order, f.is_active, f.created_by, 
+                    f.created_at, f.updated_at,
+                    (SELECT COUNT(*) FROM documents d WHERE d.folder_id = f.id AND d.is_active = 1 AND d.deleted_at IS NULL) AS file_count,
+                    COALESCE((SELECT SUM(d.file_size) FROM documents d WHERE d.folder_id = f.id AND d.is_active = 1 AND d.deleted_at IS NULL), 0) AS total_size
+             FROM folders f
+             WHERE f.is_active = 1
+             ORDER BY f.sort_order ASC, f.name ASC`
         );
         return rows;
     }
@@ -37,11 +39,13 @@ class FolderModel {
 
     static async findById(id) {
         const [rows] = await db.query(
-            `SELECT id, folder_code, name, description, parent_id, path, access_level, 
-                    allowed_roles, allowed_users, sort_order, is_active, created_by, 
-                    created_at, updated_at
-             FROM folders
-             WHERE id = ?`,
+            `SELECT f.id, f.folder_code, f.name, f.description, f.parent_id, f.path, f.access_level, 
+                    f.allowed_roles, f.allowed_users, f.sort_order, f.is_active, f.created_by, 
+                    f.created_at, f.updated_at,
+                    (SELECT COUNT(*) FROM documents d WHERE d.folder_id = f.id AND d.is_active = 1 AND d.deleted_at IS NULL) AS file_count,
+                    COALESCE((SELECT SUM(d.file_size) FROM documents d WHERE d.folder_id = f.id AND d.is_active = 1 AND d.deleted_at IS NULL), 0) AS total_size
+             FROM folders f
+             WHERE f.id = ?`,
             [id]
         );
         return rows[0] || null;
@@ -254,6 +258,8 @@ class FolderModel {
                 accessLevel: f.access_level,
                 allowedRoles: typeof f.allowed_roles === 'string' ? JSON.parse(f.allowed_roles) : f.allowed_roles,
                 allowedUsers: typeof f.allowed_users === 'string' ? JSON.parse(f.allowed_users) : f.allowed_users,
+                fileCount: Number(f.file_count) || 0,
+                totalSize: Number(f.total_size) || 0,
                 children: []
             });
         });
