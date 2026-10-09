@@ -33,7 +33,8 @@ interface FolderTreeProps {
   onSelectFile?: (file: any) => void;
   dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
   onDropItem?: (targetFolderId: string | null) => void;
-  onDragStartItem?: (item: { id: string; type: 'folder'; name: string }) => void;
+  onDropFiles?: (files: FileList | File[], targetFolderId: string | null) => void;
+  onDragStartItem?: (item: { id: string; type: 'folder' | 'file'; name: string }) => void;
   onDragEndItem?: () => void;
   onDeleteFolder?: (folder: any) => void;
   onCreateRootFolder?: () => void;
@@ -97,7 +98,8 @@ const TreeItem: React.FC<{
   onSelectFile?: (file: any) => void;
   dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
   onDropItem?: (targetFolderId: string | null) => void;
-  onDragStartItem?: (item: { id: string; type: 'folder'; name: string }) => void;
+  onDropFiles?: (files: FileList | File[], targetFolderId: string | null) => void;
+  onDragStartItem?: (item: { id: string; type: 'folder' | 'file'; name: string }) => void;
   onDragEndItem?: () => void;
   onDeleteFolder?: (folder: any) => void;
 }> = ({
@@ -108,6 +110,7 @@ const TreeItem: React.FC<{
   onSelectFile,
   dragItem,
   onDropItem,
+  onDropFiles,
   onDragStartItem,
   onDragEndItem,
   onDeleteFolder,
@@ -135,27 +138,40 @@ const TreeItem: React.FC<{
           e.stopPropagation();
           onDragEndItem?.();
         }}
-        className={`group flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-grab active:cursor-grabbing transition-colors ${
+        className={`group flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-grab active:cursor-grabbing transition-all ${
           isDragOver
-            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02]'
+            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02] shadow-sm'
             : isSelected
             ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200'
             : 'text-slate-700 hover:bg-slate-100'
         }`}
         onClick={() => onSelectFolder(String(node.id))}
         onDragOver={(e) => {
-          if (canAcceptDrop) {
+          const isExternal = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
+          if (canAcceptDrop || isExternal) {
             e.preventDefault();
             e.stopPropagation();
             setIsDragOver(true);
-            e.dataTransfer.dropEffect = 'move';
+            e.dataTransfer.dropEffect = 'copy';
           }
         }}
-        onDragLeave={() => setIsDragOver(false)}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(false);
+        }}
         onDrop={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setIsDragOver(false);
+
+          // 1. Thả file từ desktop ngoài vào thư mục này
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            onDropFiles?.(e.dataTransfer.files, String(node.id));
+            return;
+          }
+
+          // 2. Thả file/folder nội bộ vào thư mục này
           if (canAcceptDrop) {
             onDropItem?.(String(node.id));
           }
@@ -221,28 +237,40 @@ const TreeItem: React.FC<{
               onSelectFile={onSelectFile}
               dragItem={dragItem}
               onDropItem={onDropItem}
+              onDropFiles={onDropFiles}
               onDragStartItem={onDragStartItem}
               onDragEndItem={onDragEndItem}
               onDeleteFolder={onDeleteFolder}
             />
           ))}
 
-          {/* Files inside this folder */}
+          {/* Files inside this folder - Draggable to move to another folder */}
           {node.files?.map((file: any) => {
             const isFileSelected = selectedFileId && String(selectedFileId) === String(file.id);
             return (
               <div
                 key={file.id}
+                draggable
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  onDragStartItem?.({ id: String(file.id), type: 'file', name: file.name });
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', JSON.stringify({ id: file.id, type: 'file', name: file.name }));
+                }}
+                onDragEnd={(e) => {
+                  e.stopPropagation();
+                  onDragEndItem?.();
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectFile?.(file);
                 }}
-                className={`flex items-center gap-2 py-1 px-2 rounded-lg cursor-pointer transition-colors ${
+                className={`flex items-center gap-2 py-1 px-2 rounded-lg cursor-grab active:cursor-grabbing transition-colors ${
                   isFileSelected
                     ? 'bg-blue-50 text-blue-700 font-semibold'
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
-                title={file.name}
+                title={`Kéo thả để di chuyển tệp "${file.name}"`}
               >
                 <FileMiniBadge file={file} size="sm" />
                 <span className="truncate flex-1 font-normal text-xs">{file.name}</span>
@@ -264,6 +292,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   onSelectFile,
   dragItem,
   onDropItem,
+  onDropFiles,
   onDragStartItem,
   onDragEndItem,
   onDeleteFolder,
@@ -276,29 +305,42 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
 
   return (
     <div className="space-y-1">
-      {/* Root item */}
+      {/* Root item - Drop target for moving files to root or uploading to root */}
       <div
         onClick={() => onSelectFolder(null)}
         onDragOver={(e) => {
-          if (dragItem) {
+          const isExternal = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
+          if (dragItem || isExternal) {
             e.preventDefault();
             e.stopPropagation();
             setIsRootDragOver(true);
-            e.dataTransfer.dropEffect = 'move';
+            e.dataTransfer.dropEffect = 'copy';
           }
         }}
-        onDragLeave={() => setIsRootDragOver(false)}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsRootDragOver(false);
+        }}
         onDrop={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setIsRootDragOver(false);
+
+          // 1. Thả file từ desktop ngoài vào Root
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            onDropFiles?.(e.dataTransfer.files, null);
+            return;
+          }
+
+          // 2. Thả file/folder nội bộ ra Root
           if (dragItem) {
             onDropItem?.(null);
           }
         }}
-        className={`group flex items-center gap-2 py-1.5 px-2.5 rounded-lg cursor-pointer text-xs font-semibold transition-colors ${
+        className={`group flex items-center gap-2 py-1.5 px-2.5 rounded-lg cursor-pointer text-xs font-semibold transition-all ${
           isRootDragOver
-            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02]'
+            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02] shadow-sm'
             : selectedFolderId === null
             ? 'bg-blue-600 text-white shadow-sm'
             : 'text-slate-700 hover:bg-slate-100'
@@ -366,13 +408,14 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
               onSelectFile={onSelectFile}
               dragItem={dragItem}
               onDropItem={onDropItem}
+              onDropFiles={onDropFiles}
               onDragStartItem={onDragStartItem}
               onDragEndItem={onDragEndItem}
               onDeleteFolder={onDeleteFolder}
             />
           ))}
 
-          {/* Danh sách các file nằm ở Root (không thuộc thư mục nào) */}
+          {/* Danh sách các file nằm ở Root - Draggable to move into a folder */}
           {rootFiles.length > 0 && (
             <div className="pl-3.5 ml-2 border-l border-slate-200 mt-0.5 space-y-0.5">
               {rootFiles.map((file: any) => {
@@ -380,16 +423,27 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
                 return (
                   <div
                     key={file.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.stopPropagation();
+                      onDragStartItem?.({ id: String(file.id), type: 'file', name: file.name });
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', JSON.stringify({ id: file.id, type: 'file', name: file.name }));
+                    }}
+                    onDragEnd={(e) => {
+                      e.stopPropagation();
+                      onDragEndItem?.();
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelectFile?.(file);
                     }}
-                    className={`flex items-center gap-2 py-1 px-2 rounded-lg cursor-pointer transition-colors ${
+                    className={`flex items-center gap-2 py-1 px-2 rounded-lg cursor-grab active:cursor-grabbing transition-colors ${
                       isFileSelected
                         ? 'bg-blue-50 text-blue-700 font-semibold'
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
-                    title={file.name}
+                    title={`Kéo thả để di chuyển tệp "${file.name}"`}
                   >
                     <FileMiniBadge file={file} size="sm" />
                     <span className="truncate flex-1 font-normal text-xs">{file.name}</span>

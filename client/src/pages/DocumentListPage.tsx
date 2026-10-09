@@ -628,20 +628,42 @@ export const DocumentListPage: React.FC = () => {
     fetchDocuments(page);
   };
 
-  // Drag & drop dropzone on folders
+  // Drag & drop dropzone on folders (hỗ trợ chuyển 1 file hoặc nhiều file đã chọn)
   const handleDropOnFolder = async (targetFolderId: string | null) => {
     if (!dragItem) return;
 
     try {
       if (dragItem.type === 'file') {
-        const res = await api.put(`/documents/${dragItem.id}`, {
-          folder_id: targetFolderId ? Number(targetFolderId) : 1
-        });
-        if (res.data.success) {
-          toast('success', `Đã chuyển "${dragItem.name}" vào thư mục mới`);
-          fetchDocuments(page);
-          fetchFolderContents();
+        const destFolderId = targetFolderId ? Number(targetFolderId) : null;
+        
+        // Nếu file đang kéo nằm trong danh sách các file đã tick chọn checkbox (selectedDocIds)
+        // thì di chuyển toàn bộ các file đã chọn!
+        const idsToMove = selectedDocIds.includes(Number(dragItem.id))
+          ? selectedDocIds
+          : [Number(dragItem.id)];
+
+        let movedCount = 0;
+        for (const id of idsToMove) {
+          const res = await api.put(`/documents/${id}`, {
+            folder_id: destFolderId
+          });
+          if (res.data.success) movedCount++;
         }
+
+        const folderName = targetFolderId
+          ? (findFolderInTree(tree, targetFolderId)?.name || 'thư mục')
+          : 'Root (thư mục gốc)';
+
+        if (movedCount === 1) {
+          toast('success', `Đã chuyển "${dragItem.name}" vào "${folderName}"`);
+        } else {
+          toast('success', `Đã chuyển ${movedCount} tài liệu vào "${folderName}"`);
+        }
+
+        setSelectedDocIds([]);
+        fetchDocuments(page);
+        fetchTree();
+        fetchFolderContents();
       } else if (dragItem.type === 'folder') {
         if (String(dragItem.id) === String(targetFolderId)) return;
         const res = await api.put(`/folders/${dragItem.id}/move`, {
@@ -658,6 +680,20 @@ export const DocumentListPage: React.FC = () => {
     } finally {
       setDragItem(null);
     }
+  };
+
+  // Handle dropping external desktop files directly into a specific folder or Root
+  const handleDropExternalFiles = async (files: FileList | File[], targetFolderId: string | null) => {
+    if (!files || files.length === 0) return;
+    const destName = targetFolderId
+      ? (findFolderInTree(tree, targetFolderId)?.name || 'thư mục')
+      : 'Root (thư mục gốc)';
+
+    toast('info', `Đang tải ${files.length} tệp vào "${destName}"...`);
+    await handleQuickUploadToFolder(files, targetFolderId || undefined);
+    fetchDocuments(page);
+    fetchTree();
+    fetchFolderContents();
   };
 
   // Check if dragged item is external file from OS
@@ -915,6 +951,7 @@ export const DocumentListPage: React.FC = () => {
             }}
             dragItem={dragItem}
             onDropItem={(targetId) => handleDropOnFolder(targetId)}
+            onDropFiles={(files, targetId) => handleDropExternalFiles(files, targetId)}
             onDragStartItem={(item) => setDragItem(item)}
             onDragEndItem={() => setDragItem(null)}
             onDeleteFolder={(folder) => handleDeleteFolder(folder)}
@@ -1473,7 +1510,7 @@ export const DocumentListPage: React.FC = () => {
                           setSelectedDoc(doc);
                           setIsInspectorOpen(true);
                         }}
-                        className={`hover:bg-blue-50/30 transition-colors cursor-pointer group ${
+                        className={`hover:bg-blue-50/30 transition-colors cursor-grab active:cursor-grabbing group ${
                           isCurrentInspector ? 'bg-blue-50/50' : isSelected ? 'bg-slate-50' : ''
                         }`}
                       >
@@ -1681,12 +1718,19 @@ export const DocumentListPage: React.FC = () => {
                 return (
                   <div
                     key={doc.id}
+                    draggable
+                    onDragStart={(e) => {
+                      setDragItem({ id: String(doc.id), type: 'file', name: doc.name });
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', JSON.stringify({ id: doc.id, type: 'file', name: doc.name }));
+                    }}
+                    onDragEnd={() => setDragItem(null)}
                     onClick={() => {
                       setSelectedFolder(null);
                       setSelectedDoc(doc);
                       setIsInspectorOpen(true);
                     }}
-                    className={`bg-white rounded-2xl border p-4 hover:border-blue-300 hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer ${
+                    className={`bg-white rounded-2xl border p-4 hover:border-blue-300 hover:shadow-md transition-all flex flex-col justify-between group cursor-grab active:cursor-grabbing ${
                       isCurrentInspector
                         ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-md'
                         : isSelected
