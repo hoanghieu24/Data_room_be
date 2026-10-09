@@ -32,7 +32,7 @@ interface FolderTreeProps {
   onSelectFolder: (folderId: string | null) => void;
   onSelectFile?: (file: any) => void;
   dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
-  onDropItem?: (targetFolderId: string | null) => void;
+  onDropItem?: (targetFolderId: string | null, droppedItem?: any) => void;
   onDropFiles?: (files: FileList | File[], targetFolderId: string | null) => void;
   onDragStartItem?: (item: { id: string; type: 'folder' | 'file'; name: string }) => void;
   onDragEndItem?: () => void;
@@ -97,7 +97,7 @@ const TreeItem: React.FC<{
   onSelectFolder: (folderId: string | null) => void;
   onSelectFile?: (file: any) => void;
   dragItem?: { id: string; type: 'folder' | 'file'; name: string } | null;
-  onDropItem?: (targetFolderId: string | null) => void;
+  onDropItem?: (targetFolderId: string | null, droppedItem?: any) => void;
   onDropFiles?: (files: FileList | File[], targetFolderId: string | null) => void;
   onDragStartItem?: (item: { id: string; type: 'folder' | 'file'; name: string }) => void;
   onDragEndItem?: () => void;
@@ -122,17 +122,17 @@ const TreeItem: React.FC<{
   const hasFiles = node.files && node.files.length > 0;
   const canExpand = hasChildren || hasFiles;
 
-  const canAcceptDrop = dragItem && (dragItem.type !== 'folder' || String(dragItem.id) !== String(node.id));
-
   return (
     <div className="select-none text-xs">
       <div
         draggable
         onDragStart={(e) => {
           e.stopPropagation();
-          onDragStartItem?.({ id: String(node.id), type: 'folder', name: node.name });
+          const item = { id: String(node.id), type: 'folder' as const, name: node.name };
+          onDragStartItem?.(item);
           e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', JSON.stringify({ id: node.id, type: 'folder', name: node.name }));
+          e.dataTransfer.setData('text/plain', JSON.stringify(item));
+          e.dataTransfer.setData('application/json', JSON.stringify(item));
         }}
         onDragEnd={(e) => {
           e.stopPropagation();
@@ -147,18 +147,17 @@ const TreeItem: React.FC<{
         }`}
         onClick={() => onSelectFolder(String(node.id))}
         onDragOver={(e) => {
-          const isExternal = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
-          if (canAcceptDrop || isExternal) {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsDragOver(true);
-            e.dataTransfer.dropEffect = 'copy';
-          }
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(true);
+          e.dataTransfer.dropEffect = 'copy';
         }}
         onDragLeave={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setIsDragOver(false);
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setIsDragOver(false);
+          }
         }}
         onDrop={(e) => {
           e.preventDefault();
@@ -172,8 +171,20 @@ const TreeItem: React.FC<{
           }
 
           // 2. Thả file/folder nội bộ vào thư mục này
-          if (canAcceptDrop) {
-            onDropItem?.(String(node.id));
+          let item = dragItem;
+          if (!item) {
+            try {
+              const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
+              if (raw) item = JSON.parse(raw);
+            } catch {}
+          }
+
+          if (item) {
+            // Không cho thả folder vào chính nó
+            if (item.type === 'folder' && String(item.id) === String(node.id)) {
+              return;
+            }
+            onDropItem?.(String(node.id), item);
           }
         }}
       >
@@ -309,18 +320,17 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
       <div
         onClick={() => onSelectFolder(null)}
         onDragOver={(e) => {
-          const isExternal = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
-          if (dragItem || isExternal) {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsRootDragOver(true);
-            e.dataTransfer.dropEffect = 'copy';
-          }
+          e.preventDefault();
+          e.stopPropagation();
+          setIsRootDragOver(true);
+          e.dataTransfer.dropEffect = 'copy';
         }}
         onDragLeave={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setIsRootDragOver(false);
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setIsRootDragOver(false);
+          }
         }}
         onDrop={(e) => {
           e.preventDefault();
@@ -334,8 +344,15 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
           }
 
           // 2. Thả file/folder nội bộ ra Root
-          if (dragItem) {
-            onDropItem?.(null);
+          let item = dragItem;
+          if (!item) {
+            try {
+              const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
+              if (raw) item = JSON.parse(raw);
+            } catch {}
+          }
+          if (item) {
+            onDropItem?.(null, item);
           }
         }}
         className={`group flex items-center gap-2 py-1.5 px-2.5 rounded-lg cursor-pointer text-xs font-semibold transition-all ${

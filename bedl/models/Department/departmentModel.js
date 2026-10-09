@@ -5,7 +5,9 @@ const DepartmentModel = {
         try {
             const offset = (page - 1) * limit;
             const [rows] = await db.query(
-                `SELECT d.*, (SELECT COUNT(*) FROM users u WHERE u.department_id = d.id) as member_count 
+                `SELECT d.*, 
+                        (SELECT COUNT(*) FROM users u WHERE u.department_id = d.id) as member_count,
+                        (SELECT COUNT(*) FROM documents doc WHERE doc.department_id = d.id AND doc.deleted_at IS NULL) as document_count
                  FROM departments d 
                  ORDER BY d.is_active DESC, d.name ASC 
                  LIMIT ? OFFSET ?`,
@@ -119,6 +121,31 @@ const DepartmentModel = {
             const [rows] = await db.query(
                 'SELECT * FROM departments WHERE (code LIKE ? OR name LIKE ? OR description LIKE ?) AND is_active = 1 ORDER BY created_at DESC',
                 [term, term, term]
+            );
+            return rows;
+        } catch (error) {
+            throw error;
+        }
+    },
+
+    getDocuments: async (departmentId) => {
+        try {
+            const [rows] = await db.query(
+                `SELECT d.id, d.document_code, d.name, d.description, d.file_name, 
+                        d.file_size, d.file_type, d.mime_type, d.version, d.access_level,
+                        d.status, d.security_level, d.created_at, d.updated_at, d.folder_id,
+                        d.access_password_hash IS NOT NULL as has_password,
+                        u.username as uploaded_by_name,
+                        u.full_name as uploader_full_name,
+                        dt.name as document_type_name,
+                        f.name as folder_name
+                 FROM documents d
+                 LEFT JOIN users u ON d.uploaded_by = u.id
+                 LEFT JOIN document_types dt ON d.document_type_id = dt.id
+                 LEFT JOIN folders f ON d.folder_id = f.id
+                 WHERE d.department_id = ? AND d.deleted_at IS NULL
+                 ORDER BY d.created_at DESC`,
+                [departmentId]
             );
             return rows;
         } catch (error) {

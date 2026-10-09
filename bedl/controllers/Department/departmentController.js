@@ -187,6 +187,25 @@ const DepartmentController = {
             console.error('Error in getDepartmentMembers:', error);
             res.status(500).json({ success: false, message: error.message });
         }
+    },
+
+    getDepartmentDocuments: async (req, res) => {
+        try {
+            const id = parseId(req.params.id);
+            const documents = await DepartmentService.getDepartmentDocuments(id);
+            res.json({
+                success: true,
+                message: 'Department documents retrieved successfully',
+                documents
+            });
+        } catch (error) {
+            console.error('Error in getDepartmentDocuments:', error);
+            const status = error.message.includes('Invalid ID') ? 400 : 500;
+            res.status(status).json({
+                success: false,
+                message: error.message
+            });
+        }
     }
 };
 

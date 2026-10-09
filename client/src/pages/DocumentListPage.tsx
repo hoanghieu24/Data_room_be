@@ -118,7 +118,14 @@ export const DocumentListPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [securityFilter, setSecurityFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
-  const [departmentFilter, setDepartmentFilter] = useState('ALL');
+  const [departmentFilter, setDepartmentFilter] = useState(() => searchParams.get('department_id') || 'ALL');
+
+  useEffect(() => {
+    const deptId = searchParams.get('department_id');
+    if (deptId) {
+      setDepartmentFilter(deptId);
+    }
+  }, [searchParams]);
 
   // Sorting
   const [sortBy, setSortBy] = useState('created_at');
@@ -629,18 +636,19 @@ export const DocumentListPage: React.FC = () => {
   };
 
   // Drag & drop dropzone on folders (hỗ trợ chuyển 1 file hoặc nhiều file đã chọn)
-  const handleDropOnFolder = async (targetFolderId: string | null) => {
-    if (!dragItem) return;
+  const handleDropOnFolder = async (targetFolderId: string | null, droppedItem?: any) => {
+    const itemToMove = droppedItem || dragItem;
+    if (!itemToMove) return;
 
     try {
-      if (dragItem.type === 'file') {
+      if (itemToMove.type === 'file') {
         const destFolderId = targetFolderId ? Number(targetFolderId) : null;
         
         // Nếu file đang kéo nằm trong danh sách các file đã tick chọn checkbox (selectedDocIds)
         // thì di chuyển toàn bộ các file đã chọn!
-        const idsToMove = selectedDocIds.includes(Number(dragItem.id))
+        const idsToMove = selectedDocIds.includes(Number(itemToMove.id))
           ? selectedDocIds
-          : [Number(dragItem.id)];
+          : [Number(itemToMove.id)];
 
         let movedCount = 0;
         for (const id of idsToMove) {
@@ -655,7 +663,7 @@ export const DocumentListPage: React.FC = () => {
           : 'Root (thư mục gốc)';
 
         if (movedCount === 1) {
-          toast('success', `Đã chuyển "${dragItem.name}" vào "${folderName}"`);
+          toast('success', `Đã chuyển "${itemToMove.name}" vào "${folderName}"`);
         } else {
           toast('success', `Đã chuyển ${movedCount} tài liệu vào "${folderName}"`);
         }
@@ -664,13 +672,13 @@ export const DocumentListPage: React.FC = () => {
         fetchDocuments(page);
         fetchTree();
         fetchFolderContents();
-      } else if (dragItem.type === 'folder') {
-        if (String(dragItem.id) === String(targetFolderId)) return;
-        const res = await api.put(`/folders/${dragItem.id}/move`, {
+      } else if (itemToMove.type === 'folder') {
+        if (String(itemToMove.id) === String(targetFolderId)) return;
+        const res = await api.put(`/folders/${itemToMove.id}/move`, {
           targetParentId: targetFolderId ? Number(targetFolderId) : null
         });
         if (res.data.success) {
-          toast('success', `Đã chuyển thư mục "${dragItem.name}" thành công`);
+          toast('success', `Đã chuyển thư mục "${itemToMove.name}" thành công`);
           fetchTree();
           fetchFolderContents();
         }
@@ -950,7 +958,7 @@ export const DocumentListPage: React.FC = () => {
               setIsInspectorOpen(true);
             }}
             dragItem={dragItem}
-            onDropItem={(targetId) => handleDropOnFolder(targetId)}
+            onDropItem={(targetId, droppedItem) => handleDropOnFolder(targetId, droppedItem)}
             onDropFiles={(files, targetId) => handleDropExternalFiles(files, targetId)}
             onDragStartItem={(item) => setDragItem(item)}
             onDragEndItem={() => setDragItem(null)}
@@ -1501,8 +1509,11 @@ export const DocumentListPage: React.FC = () => {
                         key={doc.id}
                         draggable
                         onDragStart={(e) => {
-                          setDragItem({ id: String(doc.id), type: 'file', name: doc.name });
-                          e.dataTransfer.setData('text/plain', JSON.stringify({ id: doc.id, type: 'file', name: doc.name }));
+                          const item = { id: String(doc.id), type: 'file' as const, name: doc.name };
+                          setDragItem(item);
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', JSON.stringify(item));
+                          e.dataTransfer.setData('application/json', JSON.stringify(item));
                         }}
                         onDragEnd={() => setDragItem(null)}
                         onClick={() => {
@@ -1720,9 +1731,11 @@ export const DocumentListPage: React.FC = () => {
                     key={doc.id}
                     draggable
                     onDragStart={(e) => {
-                      setDragItem({ id: String(doc.id), type: 'file', name: doc.name });
+                      const item = { id: String(doc.id), type: 'file' as const, name: doc.name };
+                      setDragItem(item);
                       e.dataTransfer.effectAllowed = 'move';
-                      e.dataTransfer.setData('text/plain', JSON.stringify({ id: doc.id, type: 'file', name: doc.name }));
+                      e.dataTransfer.setData('text/plain', JSON.stringify(item));
+                      e.dataTransfer.setData('application/json', JSON.stringify(item));
                     }}
                     onDragEnd={() => setDragItem(null)}
                     onClick={() => {
@@ -2069,6 +2082,15 @@ export const DocumentListPage: React.FC = () => {
                     {(folderInspectFiles.length > 0 ? folderInspectFiles : filteredDocuments).map((file: any) => (
                       <div
                         key={file.id}
+                        draggable
+                        onDragStart={(e) => {
+                          const item = { id: String(file.id), type: 'file' as const, name: file.name };
+                          setDragItem(item);
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', JSON.stringify(item));
+                          e.dataTransfer.setData('application/json', JSON.stringify(item));
+                        }}
+                        onDragEnd={() => setDragItem(null)}
                         onClick={() => {
                           setPreviewFile({
                             id: file.id,
@@ -2081,7 +2103,7 @@ export const DocumentListPage: React.FC = () => {
                             isEncrypted: file.hasPassword || file.isEncrypted
                           });
                         }}
-                        className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group"
+                        className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-grab active:cursor-grabbing group"
                       >
                         <div className="flex items-center gap-2.5 min-w-0 flex-1">
                           <FileMiniBadge file={file} size="md" />

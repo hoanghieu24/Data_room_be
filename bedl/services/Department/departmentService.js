@@ -107,6 +107,18 @@ const DepartmentService = {
             console.error('Service Error in searchDepartments:', error);
             throw error;
         }
+    },
+
+    getDepartmentDocuments: async (id) => {
+        try {
+            if (isNaN(id)) {
+                throw new Error('Invalid department ID');
+            }
+            return await DepartmentModel.getDocuments(id);
+        } catch (error) {
+            console.error('Service Error in getDepartmentDocuments:', error);
+            throw error;
+        }
     }
 };
 
