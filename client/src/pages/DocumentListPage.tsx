@@ -51,7 +51,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Breadcrumb } from '../components/layout/Breadcrumb';
-import { FolderTree, TreeNode, FileMiniBadge } from '../components/dataroom/FolderTree';
+import { FolderTree, TreeNode, FileMiniBadge, globalDragItem } from '../components/dataroom/FolderTree';
 import { CreateFolderModal } from '../components/dataroom/CreateFolderModal';
 import { MoveModal } from '../components/dataroom/MoveModal';
 import { CreateDocumentModal } from '../components/dms/CreateDocumentModal';
@@ -135,6 +135,10 @@ export const DocumentListPage: React.FC = () => {
   const [types, setTypes] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
 
+  // Tab điều hướng ở Sidebar bên trái: 'tree' (Cây thư mục) | 'department' (Phòng ban)
+  const [sidebarTab, setSidebarTab] = useState<'tree' | 'department'>('tree');
+  const [dragOverDeptId, setDragOverDeptId] = useState<number | null>(null);
+
   // Modals state
   const [isCreateDocOpen, setIsCreateDocOpen] = useState(false);
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
@@ -176,6 +180,18 @@ export const DocumentListPage: React.FC = () => {
     }
   };
 
+  // Fetch Departments with document counts
+  const fetchDepartments = async () => {
+    try {
+      const res = await api.get('/departments?limit=100');
+      if (res.data.success) {
+        setDepartments(res.data.data?.data || res.data.data || []);
+      }
+    } catch (e) {
+      console.error('fetchDepartments error:', e);
+    }
+  };
+
   // Fetch Folder Contents (breadcrumbs & subfolders)
   const fetchFolderContents = async () => {
     try {
@@ -195,18 +211,12 @@ export const DocumentListPage: React.FC = () => {
   // Fetch dropdown categories
   useEffect(() => {
     fetchTree();
+    fetchDepartments();
 
     api
       .get('/document-types')
       .then((res) => {
         if (res.data.success) setTypes(res.data.types || []);
-      })
-      .catch(() => {});
-
-    api
-      .get('/departments')
-      .then((res) => {
-        if (res.data.success) setDepartments(res.data.data?.data || res.data.data || []);
       })
       .catch(() => {});
   }, []);
@@ -229,6 +239,8 @@ export const DocumentListPage: React.FC = () => {
 
       if (currentFolderId) {
         params.folder_id = currentFolderId;
+      } else if (departmentFilter !== 'ALL') {
+        params.folder_id = 'all';
       } else {
         params.folder_id = 'root';
       }
@@ -637,12 +649,14 @@ export const DocumentListPage: React.FC = () => {
 
   // Drag & drop dropzone on folders (hỗ trợ chuyển 1 file hoặc nhiều file đã chọn)
   const handleDropOnFolder = async (targetFolderId: string | null, droppedItem?: any) => {
-    const itemToMove = droppedItem || dragItem;
+    const itemToMove = droppedItem || globalDragItem.get() || dragItem;
     if (!itemToMove) return;
 
     try {
       if (itemToMove.type === 'file') {
-        const destFolderId = targetFolderId ? Number(targetFolderId) : null;
+        const destFolderId = (targetFolderId && targetFolderId !== 'root' && targetFolderId !== 'null')
+          ? Number(targetFolderId)
+          : null;
         
         // Nếu file đang kéo nằm trong danh sách các file đã tick chọn checkbox (selectedDocIds)
         // thì di chuyển toàn bộ các file đã chọn!
@@ -658,8 +672,8 @@ export const DocumentListPage: React.FC = () => {
           if (res.data.success) movedCount++;
         }
 
-        const folderName = targetFolderId
-          ? (findFolderInTree(tree, targetFolderId)?.name || 'thư mục')
+        const folderName = destFolderId
+          ? (findFolderInTree(tree, String(destFolderId))?.name || 'thư mục')
           : 'Root (thư mục gốc)';
 
         if (movedCount === 1) {
@@ -669,23 +683,73 @@ export const DocumentListPage: React.FC = () => {
         }
 
         setSelectedDocIds([]);
-        fetchDocuments(page);
-        fetchTree();
-        fetchFolderContents();
+        await Promise.all([
+          fetchDocuments(page),
+          fetchTree(),
+          fetchFolderContents()
+        ]);
       } else if (itemToMove.type === 'folder') {
-        if (String(itemToMove.id) === String(targetFolderId)) return;
+        const destParentId = (targetFolderId && targetFolderId !== 'root' && targetFolderId !== 'null')
+          ? Number(targetFolderId)
+          : null;
+        if (String(itemToMove.id) === String(destParentId)) return;
         const res = await api.put(`/folders/${itemToMove.id}/move`, {
-          targetParentId: targetFolderId ? Number(targetFolderId) : null
+          targetParentId: destParentId
         });
         if (res.data.success) {
           toast('success', `Đã chuyển thư mục "${itemToMove.name}" thành công`);
-          fetchTree();
-          fetchFolderContents();
+          await Promise.all([
+            fetchTree(),
+            fetchFolderContents()
+          ]);
         }
       }
     } catch (err: any) {
       toast('error', err.response?.data?.message || 'Lỗi khi di chuyển');
     } finally {
+      globalDragItem.clearWithDelay();
+      setDragItem(null);
+    }
+  };
+
+  // Drag & drop file vào phòng ban
+  const handleDropOnDepartment = async (departmentId: number | string, droppedItem?: any) => {
+    const itemToMove = droppedItem || globalDragItem.get() || dragItem;
+    if (!itemToMove) return;
+
+    try {
+      if (itemToMove.type === 'file') {
+        const targetDeptId = Number(departmentId);
+        const idsToMove = selectedDocIds.includes(Number(itemToMove.id))
+          ? selectedDocIds
+          : [Number(itemToMove.id)];
+
+        let movedCount = 0;
+        for (const id of idsToMove) {
+          const res = await api.put(`/documents/${id}`, {
+            department_id: targetDeptId
+          });
+          if (res.data.success) movedCount++;
+        }
+
+        const deptName = departments.find(d => String(d.id) === String(departmentId))?.name || 'phòng ban';
+        if (movedCount === 1) {
+          toast('success', `Đã gán "${itemToMove.name}" vào phòng ban "${deptName}"`);
+        } else {
+          toast('success', `Đã gán ${movedCount} tài liệu vào phòng ban "${deptName}"`);
+        }
+
+        setSelectedDocIds([]);
+        await Promise.all([
+          fetchDocuments(page),
+          fetchTree(),
+          fetchDepartments()
+        ]);
+      }
+    } catch (err: any) {
+      toast('error', err.response?.data?.message || 'Lỗi khi gán phòng ban');
+    } finally {
+      globalDragItem.clearWithDelay();
       setDragItem(null);
     }
   };
@@ -912,63 +976,202 @@ export const DocumentListPage: React.FC = () => {
         </div>
       )}
 
-      {/* 1. LEFT PANEL: Enterprise Folder Tree */}
+      {/* 1. LEFT PANEL: Enterprise Folder Tree & Department Navigator */}
       <aside
         className={`${
           isTreeCollapsed ? 'w-0 -ml-1 border-r-0' : 'w-64 border-r border-slate-200/80'
         } bg-white flex flex-col shrink-0 transition-all duration-300 overflow-hidden z-20`}
       >
-        <div className="p-3.5 border-b border-slate-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Folder className="w-4 h-4 text-blue-600" />
-            <span className="font-bold text-xs text-slate-800">Cây thư mục</span>
+        <div className="p-2.5 border-b border-slate-100 flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1 bg-slate-100/90 p-0.5 rounded-xl flex-1 max-w-[190px]">
+            <button
+              type="button"
+              onClick={() => setSidebarTab('tree')}
+              className={`flex-1 py-1 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                sidebarTab === 'tree'
+                  ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Folder className="w-3.5 h-3.5" />
+              <span>Thư mục</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSidebarTab('department')}
+              className={`flex-1 py-1 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                sidebarTab === 'department'
+                  ? 'bg-white text-blue-600 shadow-2xs font-bold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              <span>Phòng ban</span>
+              {departments.length > 0 && (
+                <span className="text-[10px] bg-slate-200/80 text-slate-600 px-1 py-0.1 rounded-full font-bold">
+                  {departments.length}
+                </span>
+              )}
+            </button>
           </div>
 
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => {
-                setCreateFolderParentId(null);
-                setIsCreateFolderOpen(true);
-              }}
-              className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-blue-600 transition-colors cursor-pointer"
-              title="Tạo thư mục mới ở Root"
-            >
-              <FolderPlus className="w-3.5 h-3.5" />
-            </button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            {sidebarTab === 'tree' && (
+              <button
+                onClick={() => {
+                  setCreateFolderParentId(null);
+                  setIsCreateFolderOpen(true);
+                }}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-blue-600 transition-colors cursor-pointer"
+                title="Tạo thư mục mới ở Root"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               onClick={() => setIsTreeCollapsed(true)}
               className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-              title="Thu gọn cây thư mục"
+              title="Thu gọn sidebar"
             >
               <PanelLeftClose className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* Folder Tree Scrollable List */}
-        <div className="flex-1 overflow-y-auto p-2">
-          <FolderTree
-            tree={tree}
-            rootFiles={rootFiles}
-            selectedFolderId={currentFolderId}
-            selectedFileId={selectedDoc?.id}
-            onSelectFolder={(id) => handleSelectFolder(id)}
-            onSelectFile={(file) => {
-              setSelectedDoc(file);
-              setIsInspectorOpen(true);
-            }}
-            dragItem={dragItem}
-            onDropItem={(targetId, droppedItem) => handleDropOnFolder(targetId, droppedItem)}
-            onDropFiles={(files, targetId) => handleDropExternalFiles(files, targetId)}
-            onDragStartItem={(item) => setDragItem(item)}
-            onDragEndItem={() => setDragItem(null)}
-            onDeleteFolder={(folder) => handleDeleteFolder(folder)}
-            onCreateRootFolder={() => {
-              setCreateFolderParentId(null);
-              setIsCreateFolderOpen(true);
-            }}
-          />
-        </div>
+        {/* Tab 1: Folder Tree */}
+        {sidebarTab === 'tree' ? (
+          <div className="flex-1 overflow-y-auto p-2">
+            <FolderTree
+              tree={tree}
+              rootFiles={rootFiles}
+              selectedFolderId={currentFolderId}
+              selectedFileId={selectedDoc?.id}
+              onSelectFolder={(id) => handleSelectFolder(id)}
+              onSelectFile={(file) => {
+                setSelectedDoc(file);
+                setIsInspectorOpen(true);
+              }}
+              dragItem={dragItem}
+              onDropItem={(targetId, droppedItem) => handleDropOnFolder(targetId, droppedItem)}
+              onDropFiles={(files, targetId) => handleDropExternalFiles(files, targetId)}
+              onDragStartItem={(item) => {
+                globalDragItem.set(item);
+                setDragItem(item);
+              }}
+              onDragEndItem={() => {
+                globalDragItem.clearWithDelay();
+                setDragItem(null);
+              }}
+              onDeleteFolder={(folder) => handleDeleteFolder(folder)}
+              onCreateRootFolder={() => {
+                setCreateFolderParentId(null);
+                setIsCreateFolderOpen(true);
+              }}
+            />
+          </div>
+        ) : (
+          /* Tab 2: Department List with Document Count & Drag-to-assign */
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {/* Tất cả phòng ban */}
+            <div
+              onClick={() => {
+                setDepartmentFilter('ALL');
+                setPage(1);
+              }}
+              className={`flex items-center gap-2 py-2 px-2.5 rounded-xl cursor-pointer text-xs transition-colors ${
+                departmentFilter === 'ALL'
+                  ? 'bg-blue-600 text-white font-bold shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-100 font-medium'
+              }`}
+            >
+              <Building2 className="w-4 h-4 shrink-0" />
+              <span className="truncate flex-1">Tất cả phòng ban</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                departmentFilter === 'ALL' ? 'bg-blue-700 text-blue-100' : 'bg-slate-100 text-slate-500'
+              }`}>
+                {departments.reduce((acc, curr) => acc + (Number(curr.document_count) || 0), 0)}
+              </span>
+            </div>
+
+            <div className="pt-1 space-y-1">
+              {departments.map((dept) => {
+                const isSelected = String(departmentFilter) === String(dept.id);
+                const isOver = dragOverDeptId === dept.id;
+                const docCount = Number(dept.document_count) || 0;
+
+                return (
+                  <div
+                    key={dept.id}
+                    onClick={() => {
+                      setDepartmentFilter(String(dept.id));
+                      handleSelectFolder(null);
+                      setSelectedFolder(null);
+                      setPage(1);
+                    }}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverDeptId(dept.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverDeptId(dept.id);
+                      e.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setDragOverDeptId(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverDeptId(null);
+                      handleDropOnDepartment(dept.id);
+                    }}
+                    className={`group flex items-center justify-between gap-2 py-2 px-2.5 rounded-xl cursor-pointer text-xs transition-all ${
+                      isOver
+                        ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 shadow-sm'
+                        : isSelected
+                        ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200'
+                        : 'text-slate-700 hover:bg-slate-50 font-medium'
+                    }`}
+                    title={`Xem tất cả tài liệu của ${dept.name} (Kéo tài liệu vào đây để gán)`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 pointer-events-none">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                        isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-600'
+                      }`}>
+                        <Building2 className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold leading-tight">{dept.name}</p>
+                        {dept.code && (
+                          <span className="text-[10px] text-slate-400 uppercase font-mono">{dept.code}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0 pointer-events-none">
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                        isSelected
+                          ? 'bg-blue-600 text-white'
+                          : docCount > 0
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {docCount}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* 2. MAIN CENTER CONTENT AREA */}
@@ -999,13 +1202,44 @@ export const DocumentListPage: React.FC = () => {
             )}
 
             {/* Breadcrumb Navigation */}
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
               <Breadcrumb
-                items={folderData.breadcrumbs || [{ id: null, name: 'Tất cả tài liệu' }]}
-                onSelect={(id) => handleSelectFolder(id)}
+                items={
+                  departmentFilter !== 'ALL'
+                    ? [
+                        { id: null, name: 'Kho tài liệu' },
+                        {
+                          id: null,
+                          name: `Phòng ban: ${departments.find((d) => String(d.id) === String(departmentFilter))?.name || departmentFilter}`
+                        }
+                      ]
+                    : folderData.breadcrumbs || [{ id: null, name: 'Tất cả tài liệu' }]
+                }
+                onSelect={(id) => {
+                  if (departmentFilter !== 'ALL') {
+                    setDepartmentFilter('ALL');
+                  }
+                  handleSelectFolder(id);
+                }}
                 dragItem={dragItem}
                 onDropItem={(id) => handleDropOnFolder(id)}
               />
+
+              {departmentFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDepartmentFilter('ALL');
+                    setPage(1);
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors cursor-pointer shrink-0"
+                  title="Hủy lọc theo phòng ban (xem tất cả)"
+                >
+                  <Building2 className="w-3 h-3" />
+                  <span>{departments.find((d) => String(d.id) === String(departmentFilter))?.name || 'Phòng ban'}</span>
+                  <X className="w-3 h-3 hover:text-rose-600" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -1335,6 +1569,7 @@ export const DocumentListPage: React.FC = () => {
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      e.dataTransfer.dropEffect = 'move';
                     }}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -1510,12 +1745,16 @@ export const DocumentListPage: React.FC = () => {
                         draggable
                         onDragStart={(e) => {
                           const item = { id: String(doc.id), type: 'file' as const, name: doc.name };
+                          globalDragItem.set(item);
                           setDragItem(item);
-                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.effectAllowed = 'all';
                           e.dataTransfer.setData('text/plain', JSON.stringify(item));
                           e.dataTransfer.setData('application/json', JSON.stringify(item));
                         }}
-                        onDragEnd={() => setDragItem(null)}
+                        onDragEnd={() => {
+                          globalDragItem.clearWithDelay();
+                          setDragItem(null);
+                        }}
                         onClick={() => {
                           setSelectedFolder(null);
                           setSelectedDoc(doc);
@@ -1732,12 +1971,16 @@ export const DocumentListPage: React.FC = () => {
                     draggable
                     onDragStart={(e) => {
                       const item = { id: String(doc.id), type: 'file' as const, name: doc.name };
+                      globalDragItem.set(item);
                       setDragItem(item);
-                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.effectAllowed = 'all';
                       e.dataTransfer.setData('text/plain', JSON.stringify(item));
                       e.dataTransfer.setData('application/json', JSON.stringify(item));
                     }}
-                    onDragEnd={() => setDragItem(null)}
+                    onDragEnd={() => {
+                      globalDragItem.clearWithDelay();
+                      setDragItem(null);
+                    }}
                     onClick={() => {
                       setSelectedFolder(null);
                       setSelectedDoc(doc);
@@ -2085,12 +2328,16 @@ export const DocumentListPage: React.FC = () => {
                         draggable
                         onDragStart={(e) => {
                           const item = { id: String(file.id), type: 'file' as const, name: file.name };
+                          globalDragItem.set(item);
                           setDragItem(item);
-                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.effectAllowed = 'all';
                           e.dataTransfer.setData('text/plain', JSON.stringify(item));
                           e.dataTransfer.setData('application/json', JSON.stringify(item));
                         }}
-                        onDragEnd={() => setDragItem(null)}
+                        onDragEnd={() => {
+                          globalDragItem.clearWithDelay();
+                          setDragItem(null);
+                        }}
                         onClick={() => {
                           setPreviewFile({
                             id: file.id,

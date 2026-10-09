@@ -41,6 +41,25 @@ interface FolderTreeProps {
 }
 
 /**
+ * Bộ nhớ phiên kéo thả toàn cục để bảo đảm dữ liệu kéo thả không bị mất
+ * khi React re-render hoặc sự kiện onDragEnd kích hoạt trước onDrop.
+ */
+export const globalDragItem = {
+  current: null as { id: string; type: 'folder' | 'file'; name: string } | null,
+  set(item: { id: string; type: 'folder' | 'file'; name: string } | null) {
+    this.current = item;
+  },
+  get() {
+    return this.current;
+  },
+  clearWithDelay() {
+    setTimeout(() => {
+      this.current = null;
+    }, 400);
+  }
+};
+
+/**
  * Icon badge định dạng file đồng bộ chuẩn với giao diện trong ảnh
  */
 export const FileMiniBadge: React.FC<{ file: any; size?: 'sm' | 'md' }> = ({ file, size = 'sm' }) => {
@@ -129,28 +148,35 @@ const TreeItem: React.FC<{
         onDragStart={(e) => {
           e.stopPropagation();
           const item = { id: String(node.id), type: 'folder' as const, name: node.name };
+          globalDragItem.set(item);
           onDragStartItem?.(item);
-          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.effectAllowed = 'all';
           e.dataTransfer.setData('text/plain', JSON.stringify(item));
           e.dataTransfer.setData('application/json', JSON.stringify(item));
         }}
         onDragEnd={(e) => {
           e.stopPropagation();
+          globalDragItem.clearWithDelay();
           onDragEndItem?.();
         }}
-        className={`group flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-grab active:cursor-grabbing transition-all ${
+        className={`group flex items-center gap-1.5 py-1.5 px-2 rounded-lg cursor-grab active:cursor-grabbing transition-colors ${
           isDragOver
-            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02] shadow-sm'
+            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 shadow-sm'
             : isSelected
             ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200'
             : 'text-slate-700 hover:bg-slate-100'
         }`}
         onClick={() => onSelectFolder(String(node.id))}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(true);
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setIsDragOver(true);
-          e.dataTransfer.dropEffect = 'copy';
+          e.dataTransfer.dropEffect = 'move';
         }}
         onDragLeave={(e) => {
           e.preventDefault();
@@ -166,12 +192,13 @@ const TreeItem: React.FC<{
 
           // 1. Thả file từ desktop ngoài vào thư mục này
           if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            setIsOpen(true);
             onDropFiles?.(e.dataTransfer.files, String(node.id));
             return;
           }
 
           // 2. Thả file/folder nội bộ vào thư mục này
-          let item = dragItem;
+          let item = globalDragItem.get() || dragItem;
           if (!item) {
             try {
               const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
@@ -184,6 +211,7 @@ const TreeItem: React.FC<{
             if (item.type === 'folder' && String(item.id) === String(node.id)) {
               return;
             }
+            setIsOpen(true); // Mở thư mục ra ngay để hiển thị file vừa nhận
             onDropItem?.(String(node.id), item);
           }
         }}
@@ -194,27 +222,27 @@ const TreeItem: React.FC<{
             e.stopPropagation();
             setIsOpen(!isOpen);
           }}
-          className="p-0.5 hover:bg-slate-200 rounded text-slate-400"
+          className="p-0.5 hover:bg-slate-200 rounded text-slate-400 shrink-0 pointer-events-none sm:pointer-events-auto"
         >
           {canExpand ? (
-            isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
+            isOpen ? <ChevronDown className="w-3.5 h-3.5 pointer-events-none" /> : <ChevronRight className="w-3.5 h-3.5 pointer-events-none" />
           ) : (
-            <span className="w-3.5 h-3.5 inline-block" />
+            <span className="w-3.5 h-3.5 inline-block pointer-events-none" />
           )}
         </button>
 
-        <GripVertical className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 shrink-0 cursor-grab" />
+        <GripVertical className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 shrink-0 cursor-grab pointer-events-none" />
 
         {isSelected || isOpen ? (
-          <FolderOpen className="w-4 h-4 text-blue-500 flex-shrink-0" />
+          <FolderOpen className="w-4 h-4 text-blue-500 flex-shrink-0 pointer-events-none" />
         ) : (
-          <Folder className="w-4 h-4 text-amber-500 flex-shrink-0" />
+          <Folder className="w-4 h-4 text-amber-500 flex-shrink-0 pointer-events-none" />
         )}
 
-        <span className="truncate flex-1 font-medium">{node.name}</span>
+        <span className="truncate flex-1 font-medium pointer-events-none">{node.name}</span>
 
         {(node.fileCount > 0 || (node.files && node.files.length > 0)) && (
-          <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded-full font-semibold">
+          <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded-full font-semibold pointer-events-none">
             {node.fileCount || node.files?.length || 0}
           </span>
         )}
@@ -230,7 +258,7 @@ const TreeItem: React.FC<{
             className="p-1 opacity-0 group-hover:opacity-100 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded transition-all cursor-pointer shrink-0"
             title={`Xóa thư mục "${node.name}"`}
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-3.5 h-3.5 pointer-events-none" />
           </button>
         )}
       </div>
@@ -264,12 +292,16 @@ const TreeItem: React.FC<{
                 draggable
                 onDragStart={(e) => {
                   e.stopPropagation();
-                  onDragStartItem?.({ id: String(file.id), type: 'file', name: file.name });
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', JSON.stringify({ id: file.id, type: 'file', name: file.name }));
+                  const item = { id: String(file.id), type: 'file' as const, name: file.name };
+                  globalDragItem.set(item);
+                  onDragStartItem?.(item);
+                  e.dataTransfer.effectAllowed = 'all';
+                  e.dataTransfer.setData('text/plain', JSON.stringify(item));
+                  e.dataTransfer.setData('application/json', JSON.stringify(item));
                 }}
                 onDragEnd={(e) => {
                   e.stopPropagation();
+                  globalDragItem.clearWithDelay();
                   onDragEndItem?.();
                 }}
                 onClick={(e) => {
@@ -284,7 +316,7 @@ const TreeItem: React.FC<{
                 title={`Kéo thả để di chuyển tệp "${file.name}"`}
               >
                 <FileMiniBadge file={file} size="sm" />
-                <span className="truncate flex-1 font-normal text-xs">{file.name}</span>
+                <span className="truncate flex-1 font-normal text-xs pointer-events-none">{file.name}</span>
               </div>
             );
           })}
@@ -319,11 +351,16 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
       {/* Root item - Drop target for moving files to root or uploading to root */}
       <div
         onClick={() => onSelectFolder(null)}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsRootDragOver(true);
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setIsRootDragOver(true);
-          e.dataTransfer.dropEffect = 'copy';
+          e.dataTransfer.dropEffect = 'move';
         }}
         onDragLeave={(e) => {
           e.preventDefault();
@@ -344,7 +381,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
           }
 
           // 2. Thả file/folder nội bộ ra Root
-          let item = dragItem;
+          let item = globalDragItem.get() || dragItem;
           if (!item) {
             try {
               const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
@@ -355,9 +392,9 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             onDropItem?.(null, item);
           }
         }}
-        className={`group flex items-center gap-2 py-1.5 px-2.5 rounded-lg cursor-pointer text-xs font-semibold transition-all ${
+        className={`group flex items-center gap-2 py-1.5 px-2.5 rounded-lg cursor-pointer text-xs font-semibold transition-colors ${
           isRootDragOver
-            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 scale-[1.02] shadow-sm'
+            ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 shadow-sm'
             : selectedFolderId === null
             ? 'bg-blue-600 text-white shadow-sm'
             : 'text-slate-700 hover:bg-slate-100'
@@ -369,23 +406,23 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             e.stopPropagation();
             setIsRootOpen(!isRootOpen);
           }}
-          className={`p-0.5 rounded ${
+          className={`p-0.5 rounded shrink-0 ${
             selectedFolderId === null ? 'text-blue-100 hover:bg-blue-700' : 'text-slate-400 hover:bg-slate-200'
           }`}
         >
           {hasRootContent ? (
-            isRootOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />
+            isRootOpen ? <ChevronDown className="w-3.5 h-3.5 pointer-events-none" /> : <ChevronRight className="w-3.5 h-3.5 pointer-events-none" />
           ) : (
-            <span className="w-3.5 h-3.5 inline-block" />
+            <span className="w-3.5 h-3.5 inline-block pointer-events-none" />
           )}
         </button>
 
-        <Layers className="w-4 h-4 shrink-0" />
-        <span className="truncate flex-1">Tất cả thư mục (Root)</span>
+        <Layers className="w-4 h-4 shrink-0 pointer-events-none" />
+        <span className="truncate flex-1 pointer-events-none">Tất cả thư mục (Root)</span>
 
         {rootFiles.length > 0 && (
           <span
-            className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
+            className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold pointer-events-none ${
               selectedFolderId === null ? 'bg-blue-700 text-blue-100' : 'bg-slate-100 text-slate-500'
             }`}
           >
@@ -407,7 +444,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             }`}
             title="Tạo thư mục mới ở Root (cùng cấp với Data Room)"
           >
-            <FolderPlus className="w-3.5 h-3.5" />
+            <FolderPlus className="w-3.5 h-3.5 pointer-events-none" />
           </button>
         )}
       </div>
@@ -443,12 +480,16 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
                     draggable
                     onDragStart={(e) => {
                       e.stopPropagation();
-                      onDragStartItem?.({ id: String(file.id), type: 'file', name: file.name });
-                      e.dataTransfer.effectAllowed = 'move';
-                      e.dataTransfer.setData('text/plain', JSON.stringify({ id: file.id, type: 'file', name: file.name }));
+                      const item = { id: String(file.id), type: 'file' as const, name: file.name };
+                      globalDragItem.set(item);
+                      onDragStartItem?.(item);
+                      e.dataTransfer.effectAllowed = 'all';
+                      e.dataTransfer.setData('text/plain', JSON.stringify(item));
+                      e.dataTransfer.setData('application/json', JSON.stringify(item));
                     }}
                     onDragEnd={(e) => {
                       e.stopPropagation();
+                      globalDragItem.clearWithDelay();
                       onDragEndItem?.();
                     }}
                     onClick={(e) => {
@@ -463,7 +504,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
                     title={`Kéo thả để di chuyển tệp "${file.name}"`}
                   >
                     <FileMiniBadge file={file} size="sm" />
-                    <span className="truncate flex-1 font-normal text-xs">{file.name}</span>
+                    <span className="truncate flex-1 font-normal text-xs pointer-events-none">{file.name}</span>
                   </div>
                 );
               })}
