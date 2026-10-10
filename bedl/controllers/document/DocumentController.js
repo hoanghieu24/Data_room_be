@@ -47,13 +47,15 @@ const fileFilter = (req, file, cb) => {
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'application/msword',
         'text/plain',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         'image/jpeg',
         'image/png',
         'image/gif',
         'image/webp'
     ];
 
-    if (allowedTypes.includes(file.mimetype)) {
+    if (allowedTypes.includes(file.mimetype) || file.mimetype.startsWith('application/') || file.mimetype.startsWith('image/')) {
         cb(null, true);
     } else {
         cb(new Error("File type not allowed"), false);
@@ -64,7 +66,7 @@ const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        fileSize: 50 * 1024 * 1024 // 50MB limit
+        fileSize: 500 * 1024 * 1024 // 500MB limit
     }
 }).single("file");
 

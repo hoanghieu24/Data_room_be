@@ -8,7 +8,7 @@ const { authenticate, authorize } = require('../../middlewares/authMiddleware');
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+  limits: { fileSize: 500 * 1024 * 1024 } // 500MB
 });
 
 // Yêu cầu xác thực với tất cả thao tác tài liệu

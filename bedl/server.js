@@ -53,8 +53,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use((req, res, next) => {
@@ -117,6 +117,12 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
   console.error("Server error:", err);
+  if (err.code === "LIMIT_FILE_SIZE" || (err.message && err.message.toLowerCase().includes("file too large"))) {
+    return res.status(400).json({
+      success: false,
+      message: "Dung lượng tệp vượt quá giới hạn (tối đa 500MB). Vui lòng chọn tệp nhỏ hơn."
+    });
+  }
   return res.status(err.status || 500).json({
     success: false,
     message: err.message || "Internal Server Error"

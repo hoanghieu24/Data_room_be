@@ -7,7 +7,7 @@ const { authenticate, authorize, optionalAuthenticate } = require('../../middlew
 const storage = multer.memoryStorage();
 const upload = multer({
     storage,
-    limits: { fileSize: 50 * 1024 * 1024 }
+    limits: { fileSize: 500 * 1024 * 1024 } // 500MB
 });
 
 router.post('/upload', optionalAuthenticate, upload.single('file'), FileController.upload);
