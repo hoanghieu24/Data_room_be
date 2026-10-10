@@ -1015,190 +1015,63 @@ export const DocumentListPage: React.FC = () => {
           isTreeCollapsed ? 'w-0 -ml-1 border-r-0' : 'w-64 border-r border-slate-200/80'
         } bg-white flex flex-col shrink-0 transition-all duration-300 overflow-hidden z-20`}
       >
-        <div className="p-2.5 border-b border-slate-100 flex items-center justify-between gap-1">
-          <div className="flex items-center gap-1 bg-slate-100/90 p-0.5 rounded-xl flex-1 max-w-[190px]">
-            <button
-              type="button"
-              onClick={() => setSidebarTab('tree')}
-              className={`flex-1 py-1 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                sidebarTab === 'tree'
-                  ? 'bg-white text-blue-600 shadow-2xs font-bold'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Folder className="w-3.5 h-3.5" />
-              <span>Thư mục</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSidebarTab('department')}
-              className={`flex-1 py-1 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                sidebarTab === 'department'
-                  ? 'bg-white text-blue-600 shadow-2xs font-bold'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Phòng ban</span>
-              {departments.length > 0 && (
-                <span className="text-[10px] bg-slate-200/80 text-slate-600 px-1 py-0.1 rounded-full font-bold">
-                  {departments.length}
-                </span>
-              )}
-            </button>
+        <div className="p-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 font-bold text-xs text-slate-800">
+            <Folder className="w-4 h-4 text-blue-600" />
+            <span>Cây thư mục</span>
           </div>
 
-          <div className="flex items-center gap-0.5 shrink-0">
-            {sidebarTab === 'tree' && (
-              <button
-                onClick={() => {
-                  setCreateFolderParentId(null);
-                  setIsCreateFolderOpen(true);
-                }}
-                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-blue-600 transition-colors cursor-pointer"
-                title="Tạo thư mục mới ở Root"
-              >
-                <FolderPlus className="w-3.5 h-3.5" />
-              </button>
-            )}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => {
+                setCreateFolderParentId(null);
+                setIsCreateFolderOpen(true);
+              }}
+              className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-blue-600 transition-colors cursor-pointer"
+              title="Tạo thư mục mới ở Root"
+            >
+              <FolderPlus className="w-4 h-4" />
+            </button>
             <button
               onClick={() => setIsTreeCollapsed(true)}
               className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
               title="Thu gọn sidebar"
             >
-              <PanelLeftClose className="w-3.5 h-3.5" />
+              <PanelLeftClose className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Tab 1: Folder Tree */}
-        {sidebarTab === 'tree' ? (
-          <div className="flex-1 overflow-y-auto p-2">
-            <FolderTree
-              tree={tree}
-              selectedFolderId={currentFolderId}
-              onSelectFolder={(id) => handleSelectFolder(id)}
-              dragItem={dragItem}
-              onDropItem={(targetId, droppedItem) => handleDropOnFolder(targetId, droppedItem)}
-              onDropFiles={(files, targetId) => handleDropExternalFiles(files, targetId)}
-              onDragStartItem={(item) => {
-                globalDragItem.set(item);
-                setDragItem(item);
-              }}
-              onDragEndItem={() => {
-                globalDragItem.clearWithDelay();
-                setDragItem(null);
-              }}
-              onDeleteFolder={(folder) => handleDeleteFolder(folder)}
-              onCreateRootFolder={() => {
-                setCreateFolderParentId(null);
-                setIsCreateFolderOpen(true);
-              }}
-            />
-          </div>
-        ) : (
-          /* Tab 2: Department List with Document Count & Drag-to-assign */
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {/* Tất cả phòng ban */}
-            <div
-              onClick={() => {
-                setDepartmentFilter('ALL');
-                setPage(1);
-              }}
-              className={`flex items-center gap-2 py-2 px-2.5 rounded-xl cursor-pointer text-xs transition-colors ${
-                departmentFilter === 'ALL'
-                  ? 'bg-blue-600 text-white font-bold shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100 font-medium'
-              }`}
-            >
-              <Building2 className="w-4 h-4 shrink-0" />
-              <span className="truncate flex-1">Tất cả phòng ban</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                departmentFilter === 'ALL' ? 'bg-blue-700 text-blue-100' : 'bg-slate-100 text-slate-500'
-              }`}>
-                {departments.reduce((acc, curr) => acc + (Number(curr.document_count) || 0), 0)}
-              </span>
-            </div>
-
-            <div className="pt-1 space-y-1">
-              {departments.map((dept) => {
-                const isSelected = String(departmentFilter) === String(dept.id);
-                const isOver = dragOverDeptId === dept.id;
-                const docCount = Number(dept.document_count) || 0;
-
-                return (
-                  <div
-                    key={dept.id}
-                    onClick={() => {
-                      setDepartmentFilter(String(dept.id));
-                      handleSelectFolder(null);
-                      setSelectedFolder(null);
-                      setPage(1);
-                    }}
-                    onDragEnter={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDragOverDeptId(dept.id);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDragOverDeptId(dept.id);
-                      e.dataTransfer.dropEffect = 'move';
-                    }}
-                    onDragLeave={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                        setDragOverDeptId(null);
-                      }
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDragOverDeptId(null);
-                      handleDropOnDepartment(dept.id);
-                    }}
-                    className={`group flex items-center justify-between gap-2 py-2 px-2.5 rounded-xl cursor-pointer text-xs transition-all ${
-                      isOver
-                        ? 'bg-blue-100 text-blue-800 font-bold ring-2 ring-blue-500 shadow-sm'
-                        : isSelected
-                        ? 'bg-blue-50 text-blue-700 font-bold border border-blue-200'
-                        : 'text-slate-700 hover:bg-slate-50 font-medium'
-                    }`}
-                    title={`Xem tất cả tài liệu của ${dept.name} (Kéo tài liệu vào đây để gán)`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0 pointer-events-none">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                        isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-600'
-                      }`}>
-                        <Building2 className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold leading-tight">{dept.name}</p>
-                        {dept.code && (
-                          <span className="text-[10px] text-slate-400 uppercase font-mono">{dept.code}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0 pointer-events-none">
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
-                        isSelected
-                          ? 'bg-blue-600 text-white'
-                          : docCount > 0
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'bg-slate-100 text-slate-400'
-                      }`}>
-                        {docCount}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* Folder Tree */}
+        <div className="flex-1 overflow-y-auto p-2">
+          <FolderTree
+            tree={tree}
+            rootFiles={rootFiles}
+            selectedFolderId={currentFolderId}
+            selectedFileId={selectedDoc?.id}
+            onSelectFolder={(id) => handleSelectFolder(id)}
+            onSelectFile={(file) => {
+              setSelectedDoc(file);
+              setIsInspectorOpen(true);
+            }}
+            dragItem={dragItem}
+            onDropItem={(targetId, droppedItem) => handleDropOnFolder(targetId, droppedItem)}
+            onDropFiles={(files, targetId) => handleDropExternalFiles(files, targetId)}
+            onDragStartItem={(item) => {
+              globalDragItem.set(item);
+              setDragItem(item);
+            }}
+            onDragEndItem={() => {
+              globalDragItem.clearWithDelay();
+              setDragItem(null);
+            }}
+            onDeleteFolder={(folder) => handleDeleteFolder(folder)}
+            onCreateRootFolder={() => {
+              setCreateFolderParentId(null);
+              setIsCreateFolderOpen(true);
+            }}
+          />
+        </div>
       </aside>
 
       {/* 2. MAIN CENTER CONTENT AREA */}
@@ -1273,48 +1146,59 @@ export const DocumentListPage: React.FC = () => {
 
           {/* Quick Actions Bar */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* DIRECT 1-CLICK UPLOAD BUTTON */}
-            <button
-              onClick={() => quickFileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-xs cursor-pointer active:scale-95"
-              title="Tải tệp từ máy tính lên thư mục hiện tại"
-            >
-              <UploadCloud className="w-4 h-4" />
-              <span>Tải tệp lên</span>
-            </button>
-
-            {/* DIRECT NEW FOLDER BUTTON */}
-            <button
-              onClick={() => {
-                setCreateFolderParentId(currentFolderId);
-                setIsCreateFolderOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all shadow-xs cursor-pointer active:scale-95"
-              title="Tạo thư mục mới tại đây"
-            >
-              <FolderPlus className="w-4 h-4 text-amber-500" />
-              <span className="hidden sm:inline">Thư mục mới</span>
-            </button>
-
-            {/* MORE OPTIONS DROPDOWN */}
+            {/* 1. BUTTON: + + Mới */}
             <div className="relative">
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsNewMenuOpen(!isNewMenuOpen);
                 }}
-                className="p-2 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all shadow-xs cursor-pointer"
-                title="Tùy chọn tạo thêm"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-xs cursor-pointer active:scale-95"
+                title="Tạo mới hoặc tải tệp"
               >
-                <MoreHorizontal className="w-4 h-4" />
+                <Plus className="w-4 h-4" />
+                <span>+ Mới</span>
               </button>
 
               {isNewMenuOpen && (
                 <div
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute right-0 sm:left-0 mt-2 w-56 bg-white border border-slate-200/90 rounded-2xl shadow-xl p-1.5 z-40 animate-in fade-in zoom-in-95 duration-100 text-left"
+                  className="absolute right-0 mt-2 w-56 bg-white border border-slate-200/90 rounded-2xl shadow-xl p-1.5 z-40 animate-in fade-in zoom-in-95 duration-100 text-left"
                 >
                   <button
+                    type="button"
+                    onClick={() => {
+                      setIsNewMenuOpen(false);
+                      quickFileInputRef.current?.click();
+                    }}
+                    className="w-full px-3 py-2 text-xs font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <UploadCloud className="w-4 h-4 text-blue-600" />
+                    <div>
+                      <div className="font-semibold">Tải tệp lên</div>
+                      <div className="text-[10px] text-slate-400">Word, Excel, PDF, PPTX (tối đa 500MB)</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNewMenuOpen(false);
+                      setCreateFolderParentId(currentFolderId);
+                      setIsCreateFolderOpen(true);
+                    }}
+                    className="w-full px-3 py-2 text-xs font-medium text-slate-700 hover:bg-amber-50 hover:text-amber-700 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <FolderPlus className="w-4 h-4 text-amber-500" />
+                    <div>
+                      <div className="font-semibold">Thư mục mới</div>
+                      <div className="text-[10px] text-slate-400">Tạo thư mục con tại đây</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => {
                       setIsNewMenuOpen(false);
                       setIsCreateDocOpen(true);
@@ -1327,36 +1211,41 @@ export const DocumentListPage: React.FC = () => {
                       <div className="text-[10px] text-slate-400">Gắn loại văn bản, đối tác, hạn</div>
                     </div>
                   </button>
+
+                  <div className="my-1 border-t border-slate-100" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNewMenuOpen(false);
+                      fetchDocuments(page);
+                      fetchFolderContents();
+                      fetchTree();
+                    }}
+                    className="w-full px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4 text-slate-500" />
+                    <span className="font-medium">Làm mới danh sách</span>
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* REFRESH BUTTON */}
+            {/* 2. BUTTON: ✨ Quản lý thông minh */}
             <button
-              onClick={() => {
-                fetchDocuments(page);
-                fetchFolderContents();
-                fetchTree();
-              }}
-              className="p-2 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all shadow-xs cursor-pointer"
-              title="Làm mới danh sách"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
-            </button>
-
-            {/* SMART DOCUMENT MANAGEMENT BUTTON */}
-            <button
+              type="button"
               onClick={() => setIsSmartManagerOpen(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white transition-all shadow-xs cursor-pointer group"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white transition-all shadow-xs cursor-pointer group"
               title="Quản lý thông minh & Kiểm toán rủi ro"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300 group-hover:rotate-12 transition-transform" />
-              <span className="hidden md:inline text-xs">Quản lý thông minh</span>
+              <span>Quản lý thông minh</span>
             </button>
 
-            {/* View Switcher: Table / Grid */}
-            <div className="flex items-center border border-slate-200 rounded-xl p-0.5 bg-slate-50 ml-1">
+            {/* 3. BUTTON: View Switcher: Table / Grid */}
+            <div className="flex items-center border border-slate-200 rounded-xl p-0.5 bg-slate-50 ml-0.5">
               <button
+                type="button"
                 onClick={() => setViewMode('table')}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                   viewMode === 'table'
@@ -1368,6 +1257,7 @@ export const DocumentListPage: React.FC = () => {
                 <List className="w-3.5 h-3.5" />
               </button>
               <button
+                type="button"
                 onClick={() => setViewMode('grid')}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                   viewMode === 'grid'
@@ -1380,8 +1270,9 @@ export const DocumentListPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Toggle Inspector Panel */}
+            {/* 4. BUTTON: Toggle Inspector Panel */}
             <button
+              type="button"
               onClick={() => setIsInspectorOpen(!isInspectorOpen)}
               className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
                 isInspectorOpen
@@ -1405,8 +1296,8 @@ export const DocumentListPage: React.FC = () => {
                 type="text"
                 value={searchKeyword}
                 onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="Tìm nhanh theo tên tệp, loại tài liệu, mã..."
-                className="w-full text-xs pl-8 pr-8 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/60"
+                placeholder="Tìm theo tên tệp, mã hồ sơ, đối tác"
+                className="w-full text-xs pl-8 pr-8 py-2 rounded-full border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/60"
               />
               {searchKeyword && (
                 <button
@@ -1426,10 +1317,9 @@ export const DocumentListPage: React.FC = () => {
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
               {[
                 { id: 'ALL', label: 'Tất cả' },
+                { id: 'PDF', label: 'PDF' },
                 { id: 'DOC', label: 'Word' },
                 { id: 'XLS', label: 'Excel' },
-                { id: 'PPT', label: 'PowerPoint (PPT)' },
-                { id: 'PDF', label: 'PDF' },
                 { id: 'IMG', label: 'Hình ảnh' },
                 { id: 'EXPIRING', label: 'Sắp hết hạn' },
                 { id: 'MY_DOCS', label: 'Của tôi' }
@@ -1437,7 +1327,7 @@ export const DocumentListPage: React.FC = () => {
                 <button
                   key={chip.id}
                   onClick={() => setQuickFilter(chip.id)}
-                  className={`px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  className={`px-3.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                     quickFilter === chip.id
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
@@ -1450,7 +1340,7 @@ export const DocumentListPage: React.FC = () => {
               {/* Advanced Filter Button */}
               <button
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold border transition-all cursor-pointer shrink-0 ml-1 ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer shrink-0 ml-1 ${
                   isFilterOpen || activeFiltersCount > 0
                     ? 'bg-blue-50 border-blue-200 text-blue-700'
                     : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -1928,44 +1818,13 @@ export const DocumentListPage: React.FC = () => {
                         {/* Thao tác trực tiếp */}
                         <td className="py-3 px-3 text-right whitespace-nowrap">
                           <div
-                            className="flex items-center justify-end gap-1.5"
+                            className="flex items-center justify-end"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPreviewFile({
-                                  id: doc.id,
-                                  name: doc.name,
-                                  fileName: doc.fileName,
-                                  extension: doc.fileType,
-                                  url: `/api/documents/${doc.id}/file`,
-                                  previewUrl: `/api/documents/${doc.id}/file`,
-                                  hasPassword: doc.hasPassword,
-                                  isEncrypted: doc.hasPassword || doc.isEncrypted
-                                });
-                              }}
-                              className="px-2.5 py-1 text-blue-600 hover:bg-blue-50 border border-blue-200 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
-                              title="Xem tệp"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Xem</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDownload(doc)}
-                              className="px-2.5 py-1 text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
-                              title="Tải về máy"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Tải về</span>
-                            </button>
-
                             <div className="relative">
                               <button
                                 onClick={() => setActionMenuOpenId(actionMenuOpenId === doc.id ? null : doc.id)}
-                                className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                                className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                                 title="Thao tác khác"
                               >
                                 <MoreHorizontal className="w-4 h-4" />
@@ -2468,42 +2327,9 @@ export const DocumentListPage: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0 pl-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPreviewFile({
-                                id: file.id,
-                                name: file.name,
-                                fileName: file.fileName,
-                                extension: file.fileType || file.extension,
-                                url: `/api/documents/${file.id}/file`,
-                                previewUrl: `/api/documents/${file.id}/file`,
-                                hasPassword: file.hasPassword,
-                                isEncrypted: file.hasPassword || file.isEncrypted
-                              });
-                            }}
-                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                            title="Xem trước"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownload(file);
-                            }}
-                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                            title="Tải về máy"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="text-xs text-slate-400 font-medium pl-1">
-                            {getFileTypeLabel(file)}
-                          </span>
-                        </div>
+                        <span className="text-xs text-slate-400 font-medium shrink-0 pl-2">
+                          {getFileTypeLabel(file)}
+                        </span>
                       </div>
                     ))}
                   </div>
