@@ -35,6 +35,22 @@ async function uploadFileBuffer(buffer, originalname, mimetype) {
       folder = 'dms_documents/files';
     }
 
+    // Cloudinary Free tier giới hạn file raw tối đa 10MB -> File lớn lưu trực tiếp vào đĩa cục bộ
+    if (resourceType === 'raw' && buffer.length > 10 * 1024 * 1024) {
+      const uploadDir = path.resolve(process.cwd(), 'uploads/documents');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      const safeName = `${Date.now()}_${path.basename(originalname).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const localPath = path.join(uploadDir, safeName);
+      await fsPromises.writeFile(localPath, buffer);
+      return {
+        url: `/uploads/documents/${safeName}`,
+        local_path: localPath,
+        is_local: true
+      };
+    }
+
     const result = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
@@ -623,7 +639,16 @@ class DmsController {
         description
       } = req.body;
 
-      const targetFolderId = folder_id !== undefined ? (folder_id ? Number(folder_id) : null) : (folderId !== undefined ? (folderId ? Number(folderId) : null) : doc.folder_id);
+      let targetFolderId = doc.folder_id;
+      const rawFolder = folder_id !== undefined ? folder_id : folderId;
+      if (rawFolder !== undefined) {
+        if (rawFolder === null || rawFolder === '' || rawFolder === 'root' || rawFolder === 'null') {
+          targetFolderId = null;
+        } else {
+          const parsed = Number(rawFolder);
+          targetFolderId = isNaN(parsed) ? null : parsed;
+        }
+      }
 
       await db.query(`
         UPDATE documents SET

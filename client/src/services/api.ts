@@ -1,7 +1,22 @@
 import axios from 'axios';
 
+// Direct to backend in production to bypass Vercel's 4.5MB serverless proxy limit
+const getBaseURL = () => {
+  const envUrl = (import.meta as any).env?.VITE_API_URL;
+  if (envUrl) {
+    return envUrl;
+  }
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return '/api';
+    }
+  }
+  return 'https://data-room-be.onrender.com/api';
+};
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: getBaseURL(),
 });
 
 api.interceptors.request.use((config) => {

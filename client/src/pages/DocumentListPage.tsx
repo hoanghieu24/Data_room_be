@@ -156,6 +156,7 @@ export const DocumentListPage: React.FC = () => {
 
   // Drag & drop item state between folders
   const [dragItem, setDragItem] = useState<{ id: string; type: 'folder' | 'file'; name: string } | null>(null);
+  const [dragOverFolderCardId, setDragOverFolderCardId] = useState<number | string | null>(null);
 
   // Active filters count
   const activeFiltersCount = [
@@ -1075,14 +1076,8 @@ export const DocumentListPage: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-2">
             <FolderTree
               tree={tree}
-              rootFiles={rootFiles}
               selectedFolderId={currentFolderId}
-              selectedFileId={selectedDoc?.id}
               onSelectFolder={(id) => handleSelectFolder(id)}
-              onSelectFile={(file) => {
-                setSelectedDoc(file);
-                setIsInspectorOpen(true);
-              }}
               dragItem={dragItem}
               onDropItem={(targetId, droppedItem) => handleDropOnFolder(targetId, droppedItem)}
               onDropFiles={(files, targetId) => handleDropExternalFiles(files, targetId)}
@@ -1234,7 +1229,7 @@ export const DocumentListPage: React.FC = () => {
             )}
 
             {/* Breadcrumb Navigation */}
-            <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+            <div className="min-w-0 flex-1 flex items-center gap-2 overflow-x-auto">
               <Breadcrumb
                 items={
                   departmentFilter !== 'ALL'
@@ -1255,6 +1250,7 @@ export const DocumentListPage: React.FC = () => {
                 }}
                 dragItem={dragItem}
                 onDropItem={(id) => handleDropOnFolder(id)}
+                onDropFiles={(files, id) => handleDropExternalFiles(files, id)}
               />
 
               {departmentFilter !== 'ALL' && (
@@ -1599,31 +1595,59 @@ export const DocumentListPage: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {folderData.subfolders.map((folder: any) => {
                 const isSelectedFolder = selectedFolder?.id === folder.id;
+                const isDragOverCard = dragOverFolderCardId === folder.id;
+
                 return (
                   <div
                     key={folder.id}
                     onClick={() => handleInspectFolder(folder)}
                     onDoubleClick={() => handleSelectFolder(String(folder.id))}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverFolderCardId(folder.id);
+                    }}
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       e.dataTransfer.dropEffect = 'move';
+                      if (dragOverFolderCardId !== folder.id) setDragOverFolderCardId(folder.id);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (dragOverFolderCardId === folder.id) setDragOverFolderCardId(null);
                     }}
                     onDrop={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      setDragOverFolderCardId(null);
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        handleDropExternalFiles(e.dataTransfer.files, String(folder.id));
+                        return;
+                      }
                       handleDropOnFolder(String(folder.id));
                     }}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer group flex flex-col justify-between relative ${
-                      isSelectedFolder
+                      isDragOverCard
+                        ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-500 scale-102 shadow-md'
+                        : isSelectedFolder
                         ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-500/40 shadow-xs'
                         : 'bg-white hover:bg-amber-50/30 border-slate-200/80 hover:border-amber-300 shadow-2xs hover:shadow-xs'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-1">
-                      <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500 group-hover:scale-105 transition-transform">
-                        <Folder className="w-5 h-5 fill-amber-400/30 text-amber-600" />
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-transform ${
+                        isDragOverCard ? 'bg-blue-600 text-white animate-bounce' : 'bg-amber-50 text-amber-500 group-hover:scale-105'
+                      }`}>
+                        <Folder className={`w-5 h-5 ${isDragOverCard ? 'text-white' : 'fill-amber-400/30 text-amber-600'}`} />
                       </div>
+
+                      {isDragOverCard && (
+                        <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
+                          Thả vào đây
+                        </span>
+                      )}
 
                       {/* 3-Dots Folder Menu */}
                       <div className="relative">
