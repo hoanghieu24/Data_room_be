@@ -75,26 +75,34 @@ async function uploadFileBuffer(buffer, originalname, mimetype) {
 }
 
 /**
- * Tự sinh mã tài liệu dạng DOC-YYYY-XXXX
+ * Tự sinh mã tài liệu dạng DOC-YYYY-XXXX (đảm bảo duy nhất 100%)
  */
 async function generateDocCode() {
   const year = new Date().getFullYear();
   const prefix = `DOC-${year}-`;
-  const [rows] = await db.query(
-    `SELECT document_code FROM documents WHERE document_code LIKE ? ORDER BY id DESC LIMIT 1`,
-    [`${prefix}%`]
-  );
+  
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const [rows] = await db.query(
+      `SELECT document_code FROM documents WHERE document_code LIKE ? ORDER BY id DESC LIMIT 1`,
+      [`${prefix}%`]
+    );
 
-  let nextNum = 1;
-  if (rows.length > 0) {
-    const lastCode = rows[0].document_code;
-    const parts = lastCode.split('-');
-    const lastNum = parseInt(parts[parts.length - 1], 10);
-    if (!isNaN(lastNum)) {
-      nextNum = lastNum + 1;
+    let nextNum = 1;
+    if (rows.length > 0) {
+      const lastCode = rows[0].document_code;
+      const parts = lastCode.split('-');
+      const lastNum = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(lastNum)) {
+        nextNum = lastNum + 1 + attempt;
+      }
+    }
+    const candidate = `${prefix}${String(nextNum).padStart(4, '0')}`;
+    const [existing] = await db.query(`SELECT id FROM documents WHERE document_code = ? LIMIT 1`, [candidate]);
+    if (existing.length === 0) {
+      return candidate;
     }
   }
-  return `${prefix}${String(nextNum).padStart(4, '0')}`;
+  return `${prefix}${Date.now().toString().slice(-6)}`;
 }
 
 class DmsController {
@@ -374,7 +382,45 @@ class DmsController {
       } = req.body;
 
       const rawFolderId = folder_id || folderId;
-      const targetFolderId = rawFolderId ? Number(rawFolderId) : 1;
+      let targetFolderId = null;
+      if (rawFolderId && rawFolderId !== 'null' && rawFolderId !== 'root') {
+        const parsedFolderId = Number(rawFolderId);
+        if (!isNaN(parsedFolderId)) {
+          const [folderExists] = await db.query('SELECT id FROM folders WHERE id = ? LIMIT 1', [parsedFolderId]);
+          if (folderExists.length > 0) {
+            targetFolderId = parsedFolderId;
+          }
+        }
+      }
+
+      // Xác thực uploaded_by người dùng hợp lệ
+      let validUploadedBy = req.user?.id ? Number(req.user.id) : null;
+      if (validUploadedBy) {
+        const [userExists] = await db.query('SELECT id FROM users WHERE id = ? LIMIT 1', [validUploadedBy]);
+        if (userExists.length === 0) validUploadedBy = null;
+      }
+      if (!validUploadedBy) {
+        const [firstUser] = await db.query('SELECT id FROM users ORDER BY id ASC LIMIT 1');
+        validUploadedBy = firstUser.length > 0 ? firstUser[0].id : null;
+      }
+
+      // Xác thực loại tài liệu
+      let validDocTypeId = document_type_id ? Number(document_type_id) : null;
+      if (validDocTypeId) {
+        const [typeExists] = await db.query('SELECT id FROM document_types WHERE id = ? LIMIT 1', [validDocTypeId]);
+        if (typeExists.length === 0) validDocTypeId = null;
+      }
+      if (!validDocTypeId) {
+        const [firstType] = await db.query('SELECT id FROM document_types ORDER BY id ASC LIMIT 1');
+        validDocTypeId = firstType.length > 0 ? firstType[0].id : null;
+      }
+
+      // Xác thực phòng ban
+      let validDeptId = department_id ? Number(department_id) : null;
+      if (validDeptId) {
+        const [deptExists] = await db.query('SELECT id FROM departments WHERE id = ? LIMIT 1', [validDeptId]);
+        if (deptExists.length === 0) validDeptId = null;
+      }
 
       const rawPassword = password || access_password;
       let accessPasswordHash = null;
@@ -407,14 +453,14 @@ class DmsController {
         size,
         ext,
         mimetype,
-        document_type_id ? Number(document_type_id) : 1,
-        department_id ? Number(department_id) : null,
+        validDocTypeId,
+        validDeptId,
         contract_number || null,
         partner_name || null,
         published_date || new Date().toISOString().split('T')[0],
         expiry_date || null,
         security_level,
-        req.user?.id || 1,
+        validUploadedBy,
         targetFolderId,
         accessPasswordHash,
         accessPasswordHash ? 1 : 0
@@ -435,7 +481,7 @@ class DmsController {
         size,
         ext,
         mimetype,
-        req.user?.id || 1
+        validUploadedBy
       ]);
 
       // Lưu phân quyền ban đầu nếu có

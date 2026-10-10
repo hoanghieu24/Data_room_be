@@ -417,12 +417,13 @@ export const DocumentListPage: React.FC = () => {
     const fileArray = Array.from(files);
     setUploadingQuick(true);
     let successCount = 0;
+    let lastErrorMsg = '';
 
     for (const file of fileArray) {
       const formData = new FormData();
       formData.append('file', file);
       const folderTarget = targetFolderId || currentFolderId;
-      if (folderTarget) {
+      if (folderTarget && folderTarget !== 'null' && folderTarget !== 'root') {
         formData.append('folder_id', String(folderTarget));
       }
       if (departmentFilter && departmentFilter !== 'ALL') {
@@ -434,6 +435,7 @@ export const DocumentListPage: React.FC = () => {
         if (res.data.success) successCount++;
       } catch (err: any) {
         console.error('Lỗi khi tải file:', err);
+        lastErrorMsg = err.response?.data?.message || err.message || '';
       }
     }
 
@@ -447,7 +449,7 @@ export const DocumentListPage: React.FC = () => {
         handleInspectFolder(selectedFolder);
       }
     } else {
-      toast('error', 'Tải tệp thất bại. Vui lòng thử lại.');
+      toast('error', lastErrorMsg ? `Tải tệp thất bại: ${lastErrorMsg}` : 'Tải tệp thất bại. Vui lòng thử lại.');
     }
   };
 
@@ -464,11 +466,12 @@ export const DocumentListPage: React.FC = () => {
     const fileArray = Array.from(files);
     setUploadingQuick(true);
     let successCount = 0;
+    let lastErrorMsg = '';
 
     for (const file of fileArray) {
       const formData = new FormData();
       formData.append('file', file);
-      if (currentFolderId) {
+      if (currentFolderId && currentFolderId !== 'null' && currentFolderId !== 'root') {
         formData.append('folder_id', currentFolderId);
       }
       if (departmentFilter && departmentFilter !== 'ALL') {
@@ -480,6 +483,7 @@ export const DocumentListPage: React.FC = () => {
         if (res.data.success) successCount++;
       } catch (err: any) {
         console.error('Lỗi khi tải file:', err);
+        lastErrorMsg = err.response?.data?.message || err.message || '';
       }
     }
 
@@ -490,7 +494,7 @@ export const DocumentListPage: React.FC = () => {
       fetchFolderContents();
       fetchTree();
     } else {
-      toast('error', 'Tải tệp thất bại. Vui lòng thử lại.');
+      toast('error', lastErrorMsg ? `Tải tệp thất bại: ${lastErrorMsg}` : 'Tải tệp thất bại. Vui lòng thử lại.');
     }
   };
 
@@ -2378,8 +2382,41 @@ export const DocumentListPage: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="text-xs text-slate-400 font-medium shrink-0 pl-3">
-                          {getFileTypeLabel(file)}
+                        <div className="flex items-center gap-1 shrink-0 pl-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewFile({
+                                id: file.id,
+                                name: file.name,
+                                fileName: file.fileName,
+                                extension: file.fileType || file.extension,
+                                url: `/api/documents/${file.id}/file`,
+                                previewUrl: `/api/documents/${file.id}/file`,
+                                hasPassword: file.hasPassword,
+                                isEncrypted: file.hasPassword || file.isEncrypted
+                              });
+                            }}
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            title="Xem trước"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownload(file);
+                            }}
+                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                            title="Tải về máy"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="text-xs text-slate-400 font-medium pl-1">
+                            {getFileTypeLabel(file)}
+                          </span>
                         </div>
                       </div>
                     ))}
