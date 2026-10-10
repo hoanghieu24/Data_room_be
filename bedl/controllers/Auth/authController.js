@@ -50,7 +50,7 @@ exports.login = async (req, res) => {
 
         const roleCode = (user.role_code || 'ADMIN').toUpperCase();
         const token = jwt.sign(
-            { id: user.id, username: user.username, role_code: roleCode, email: user.email }, 
+            { id: user.id, username: user.username, role_code: roleCode, email: user.email, department_id: user.department_id }, 
             process.env.JWT_SECRET, 
             { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
         );
@@ -66,6 +66,7 @@ exports.login = async (req, res) => {
                 fullName: user.full_name || user.username,
                 name: user.full_name || user.username,
                 status: user.status,
+                department_id: user.department_id,
                 role: roleCode.toLowerCase(),
                 role_code: roleCode
             }

@@ -1005,29 +1005,45 @@ class DmsController {
       }
 
       if (filePath && filePath.startsWith('http')) {
-        const fetchRes = await fetch(filePath);
-        if (!fetchRes.ok) {
-          return res.status(fetchRes.status).send('Không thể lấy tệp từ kho lưu trữ đám mây');
-        }
-        const arrayBuf = await fetchRes.arrayBuffer();
-        const buffer = Buffer.from(arrayBuf);
+        try {
+          const fetchRes = await fetch(filePath);
+          if (!fetchRes.ok) {
+            return res.status(fetchRes.status).json({ success: false, message: 'Không thể lấy tệp từ kho lưu trữ đám mây (Mã ' + fetchRes.status + ')' });
+          }
+          const arrayBuf = await fetchRes.arrayBuffer();
+          const buffer = Buffer.from(arrayBuf);
 
-        res.setHeader('Content-Type', mimeType);
-        res.setHeader('Content-Length', buffer.length);
-        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
-        return res.send(buffer);
-      } else {
-        const absPath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
-        if (!fs.existsSync(absPath)) {
-          return res.status(404).send('Tệp không tồn tại trên ổ đĩa máy chủ');
+          const asciiFallback = (fileName || 'document').replace(/[^\x20-\x7E]/g, '_');
+          res.setHeader('Content-Type', mimeType);
+          res.setHeader('Content-Length', buffer.length);
+          res.setHeader('Content-Disposition', `inline; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName || 'document')}`);
+          return res.send(buffer);
+        } catch (fetchErr) {
+          console.error('Fetch cloud stream error:', fetchErr);
+          return res.status(502).json({ success: false, message: 'Lỗi khi kết nối kho lưu trữ đám mây' });
         }
+      } else if (filePath) {
+        const cleanRel = String(filePath).replace(/^[/\\]+/, '');
+        const candidatePaths = [
+          path.resolve(process.cwd(), filePath),
+          path.resolve(process.cwd(), cleanRel),
+          path.resolve(__dirname, '../../', cleanRel),
+          path.resolve(__dirname, '../../../', cleanRel)
+        ];
+        const foundPath = candidatePaths.find(p => fs.existsSync(p));
+        if (!foundPath) {
+          return res.status(404).json({ success: false, message: 'Tệp không tồn tại trên ổ đĩa máy chủ' });
+        }
+        const asciiFallback = (fileName || 'document').replace(/[^\x20-\x7E]/g, '_');
         res.setHeader('Content-Type', mimeType);
-        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
-        return res.sendFile(absPath);
+        res.setHeader('Content-Disposition', `inline; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName || 'document')}`);
+        return res.sendFile(foundPath);
+      } else {
+        return res.status(404).json({ success: false, message: 'Tài liệu chưa có tệp tin đính kèm' });
       }
     } catch (error) {
       console.error('streamFile error:', error);
-      return res.status(500).send('Lỗi khi mở tệp tin');
+      return res.status(500).json({ success: false, message: 'Lỗi khi mở tệp tin: ' + error.message });
     }
   }
 
@@ -1062,7 +1078,7 @@ class DmsController {
       }
 
       let filePath = doc.file_path;
-      let fileName = doc.file_name;
+      let fileName = doc.file_name || doc.name || 'document';
       let mimeType = doc.mime_type || 'application/octet-stream';
 
       if (version) {
@@ -1072,7 +1088,7 @@ class DmsController {
         );
         if (vRows.length > 0) {
           filePath = vRows[0].file_path;
-          fileName = vRows[0].file_name;
+          fileName = vRows[0].file_name || fileName;
           mimeType = vRows[0].mime_type || mimeType;
         }
       }
@@ -1090,23 +1106,40 @@ class DmsController {
       });
 
       if (filePath && filePath.startsWith('http')) {
-        const fetchRes = await fetch(filePath);
-        if (!fetchRes.ok) {
-          return res.status(fetchRes.status).send('Không thể tải tệp từ kho đám mây');
-        }
-        const arrayBuf = await fetchRes.arrayBuffer();
-        const buffer = Buffer.from(arrayBuf);
+        try {
+          const fetchRes = await fetch(filePath);
+          if (!fetchRes.ok) {
+            return res.status(fetchRes.status).json({ success: false, message: 'Không thể tải tệp từ kho đám mây (Mã ' + fetchRes.status + ')' });
+          }
+          const arrayBuf = await fetchRes.arrayBuffer();
+          const buffer = Buffer.from(arrayBuf);
 
-        res.setHeader('Content-Type', mimeType);
-        res.setHeader('Content-Length', buffer.length);
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-        return res.send(buffer);
-      } else {
-        const absPath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
-        if (!fs.existsSync(absPath)) {
-          return res.status(404).send('Tệp không tồn tại trên ổ đĩa máy chủ');
+          const asciiFallback = (fileName || 'document').replace(/[^\x20-\x7E]/g, '_');
+          res.setHeader('Content-Type', mimeType);
+          res.setHeader('Content-Length', buffer.length);
+          res.setHeader('Content-Disposition', `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName || 'document')}`);
+          return res.send(buffer);
+        } catch (fetchErr) {
+          console.error('Fetch cloud download error:', fetchErr);
+          return res.status(502).json({ success: false, message: 'Lỗi khi kết nối kho lưu trữ đám mây' });
         }
-        return res.download(absPath, fileName);
+      } else if (filePath) {
+        const cleanRel = String(filePath).replace(/^[/\\]+/, '');
+        const candidatePaths = [
+          path.resolve(process.cwd(), filePath),
+          path.resolve(process.cwd(), cleanRel),
+          path.resolve(__dirname, '../../', cleanRel),
+          path.resolve(__dirname, '../../../', cleanRel)
+        ];
+        const foundPath = candidatePaths.find(p => fs.existsSync(p));
+        if (!foundPath) {
+          return res.status(404).json({ success: false, message: 'Tệp không tồn tại trên ổ đĩa máy chủ' });
+        }
+        const asciiFallback = (fileName || 'document').replace(/[^\x20-\x7E]/g, '_');
+        res.setHeader('Content-Disposition', `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName || 'document')}`);
+        return res.download(foundPath, fileName);
+      } else {
+        return res.status(404).json({ success: false, message: 'Tài liệu chưa có tệp tin đính kèm để tải về' });
       }
     } catch (error) {
       console.error('downloadFile error:', error);

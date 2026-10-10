@@ -425,6 +425,9 @@ export const DocumentListPage: React.FC = () => {
       if (folderTarget) {
         formData.append('folder_id', String(folderTarget));
       }
+      if (departmentFilter && departmentFilter !== 'ALL') {
+        formData.append('department_id', String(departmentFilter));
+      }
       formData.append('name', file.name.replace(/\.[^/.]+$/, ''));
       try {
         const res = await api.post('/documents', formData);
@@ -467,6 +470,9 @@ export const DocumentListPage: React.FC = () => {
       formData.append('file', file);
       if (currentFolderId) {
         formData.append('folder_id', currentFolderId);
+      }
+      if (departmentFilter && departmentFilter !== 'ALL') {
+        formData.append('department_id', String(departmentFilter));
       }
       formData.append('name', file.name.replace(/\.[^/.]+$/, ''));
       try {
@@ -529,39 +535,44 @@ export const DocumentListPage: React.FC = () => {
   // Download document
   const handleDownload = async (doc: any) => {
     try {
-      if (doc.hasPassword) {
+      let passParam = '';
+      if (doc.hasPassword || doc.has_password) {
         const pass = window.prompt(`Vui lòng nhập mật khẩu tài liệu "${doc.name}":`);
         if (!pass) return;
-
-        const res = await api.get(`/documents/${doc.id}/download`, {
-          params: { password: pass },
-          responseType: 'blob'
-        });
-
-        const url = window.URL.createObjectURL(new Blob([res.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', doc.fileName || doc.name);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        toast('success', 'Tải tài liệu thành công');
-        return;
+        passParam = pass;
       }
 
       const res = await api.get(`/documents/${doc.id}/download`, {
+        params: passParam ? { password: passParam } : undefined,
         responseType: 'blob'
       });
+
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', doc.fileName || doc.name);
+      let downloadName = doc.fileName || doc.file_name || doc.name;
+      const ext = doc.fileType || doc.file_type || (doc.fileName?.split('.').pop() || '');
+      if (ext && !downloadName.toLowerCase().endsWith('.' + ext.toLowerCase())) {
+        downloadName = `${downloadName}.${ext}`;
+      }
+      link.setAttribute('download', downloadName);
       document.body.appendChild(link);
       link.click();
       link.remove();
-      toast('success', 'Tải tài liệu thành công');
+      window.URL.revokeObjectURL(url);
+      toast('success', `Tải tài liệu "${doc.name}" thành công`);
     } catch (err: any) {
-      toast('error', err.response?.data?.message || 'Lỗi khi tải tài liệu');
+      let errorMsg = 'Lỗi khi tải tài liệu';
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          if (json.message) errorMsg = json.message;
+        } catch (_) {}
+      } else if (err.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      }
+      toast('error', errorMsg);
     }
   };
 
@@ -2458,6 +2469,7 @@ export const DocumentListPage: React.FC = () => {
           isOpen={isCreateDocOpen}
           onClose={() => setIsCreateDocOpen(false)}
           initialFolderId={currentFolderId}
+          initialDepartmentId={departmentFilter !== 'ALL' ? Number(departmentFilter) : undefined}
           onSuccess={() => {
             fetchDocuments(1);
             fetchFolderContents();

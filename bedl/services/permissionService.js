@@ -60,8 +60,10 @@ async function computeUserDocumentPermission(user, document) {
       // Công khai: Tất cả nhân viên đều có thể xem và tải
       maxWeight = PERMISSION_WEIGHTS.DOWNLOAD;
     } else if (secLevel === 'INTERNAL') {
-      // Nội bộ: Nếu cùng phòng ban thì được tải, khác phòng ban thì được xem
+      // Nội bộ: Nếu cùng phòng ban thì được tải, khác phòng ban hoặc nhân viên công ty được xem/tải
       if (user.department_id && document.department_id && Number(user.department_id) === Number(document.department_id)) {
+        maxWeight = PERMISSION_WEIGHTS.DOWNLOAD;
+      } else if (roleCode === 'STAFF' || roleCode === 'MANAGER' || roleCode === 'ADMIN' || !roleCode || roleCode !== 'CUSTOMER') {
         maxWeight = PERMISSION_WEIGHTS.DOWNLOAD;
       } else {
         maxWeight = PERMISSION_WEIGHTS.VIEW;

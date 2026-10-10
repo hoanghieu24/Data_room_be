@@ -10,7 +10,9 @@ import {
   KeyRound,
   Eye,
   EyeOff,
-  AlertCircle
+  AlertCircle,
+  Presentation,
+  ExternalLink
 } from 'lucide-react';
 import { renderAsync as renderDocx } from 'docx-preview';
 import * as XLSX from 'xlsx';
@@ -139,6 +141,11 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   const isAudio =
     mime.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'aac'].includes(ext);
   const isPdf = ext === 'pdf' || mime.includes('pdf');
+  const isPpt =
+    ext === 'pptx' ||
+    ext === 'ppt' ||
+    mime.includes('presentation') ||
+    mime.includes('powerpoint');
   const isText =
     mime.startsWith('text/') ||
     ['txt', 'json', 'md', 'xml', 'sql', 'js', 'ts', 'css', 'html'].includes(ext);
@@ -170,43 +177,62 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
     }
 
     try {
-      // 1. Verify preview authorization
-      const res = await api.get('/files/' + file.id + '/preview', { headers });
+      let arrayBuffer: ArrayBuffer | null = null;
+      let rawUrl = file.previewUrl || file.url;
 
-      if (res.data.success) {
-        setPasswordRequired(false);
-        if (providedPassword) {
-          setUnlockedPassword(providedPassword);
-        }
-
-        let rawDownloadUrl = res.data.file.previewUrl || '/files/' + file.id + '/raw';
-        if (rawDownloadUrl.startsWith('/api/')) {
-          rawDownloadUrl = rawDownloadUrl.substring(4);
-        }
-
-        // 2. Fetch raw ArrayBuffer securely with authorization header
-        const fileRes = await api.get(rawDownloadUrl, {
+      // 1. Nếu có previewUrl/url cụ thể (như /api/documents/:id/file)
+      if (rawUrl && (rawUrl.includes('/documents/') || rawUrl.includes('/file'))) {
+        if (rawUrl.startsWith('/api/')) rawUrl = rawUrl.substring(4);
+        const fileRes = await api.get(rawUrl, {
           headers,
-          responseType: 'arraybuffer',
+          responseType: 'arraybuffer'
         });
-        const arrayBuffer: ArrayBuffer = fileRes.data;
-
-        // Render based on file type
-        if (isDocx) {
-          // Check if file is OpenXML ZIP (magic bytes PK\x03\x04 = 0x50, 0x4B, 0x03, 0x04)
-          const header = new Uint8Array(arrayBuffer.slice(0, 4));
-          const isZip = header[0] === 0x50 && header[1] === 0x4B && header[2] === 0x03 && header[3] === 0x04;
-          if (isZip) {
-            setDocxBuffer(arrayBuffer);
-          } else {
-            // Binary .doc format (Word 97-2003)
-            setIsLegacyDoc(true);
+        arrayBuffer = fileRes.data;
+        setPasswordRequired(false);
+        if (providedPassword) setUnlockedPassword(providedPassword);
+      } else {
+        // 2. Thử qua /files/:id/preview trước
+        try {
+          const res = await api.get('/files/' + file.id + '/preview', { headers });
+          if (res.data.success) {
+            setPasswordRequired(false);
+            if (providedPassword) setUnlockedPassword(providedPassword);
+            let downUrl = res.data.file.previewUrl || '/files/' + file.id + '/raw';
+            if (downUrl.startsWith('/api/')) downUrl = downUrl.substring(4);
+            const fileRes = await api.get(downUrl, { headers, responseType: 'arraybuffer' });
+            arrayBuffer = fileRes.data;
           }
-        } else if (isExcel) {
-          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-          setCurrentWorkbook(workbook);
-          const sheets = workbook.SheetNames;
-          setExcelSheets(sheets);
+        } catch (filesErr: any) {
+          // Nếu 404 (do file thuộc bảng documents), gọi fallback /documents/:id/file
+          if (filesErr.response?.status === 404) {
+            const docRes = await api.get('/documents/' + file.id + '/file', { headers, responseType: 'arraybuffer' });
+            arrayBuffer = docRes.data;
+            setPasswordRequired(false);
+            if (providedPassword) setUnlockedPassword(providedPassword);
+          } else {
+            throw filesErr;
+          }
+        }
+      }
+
+      if (!arrayBuffer) {
+        throw new Error('Không nhận được dữ liệu tệp tin');
+      }
+
+      // Render based on file type
+      if (isDocx) {
+        const header = new Uint8Array(arrayBuffer.slice(0, 4));
+        const isZip = header[0] === 0x50 && header[1] === 0x4B && header[2] === 0x03 && header[3] === 0x04;
+        if (isZip) {
+          setDocxBuffer(arrayBuffer);
+        } else {
+          setIsLegacyDoc(true);
+        }
+      } else if (isExcel) {
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        setCurrentWorkbook(workbook);
+        const sheets = workbook.SheetNames;
+        setExcelSheets(sheets);
 
           if (sheets.length > 0) {
             const firstSheet = sheets[0];
@@ -216,6 +242,11 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
             });
             setSheetData(data);
           }
+        } else if (isPpt) {
+          const contentType = ext === 'ppt' ? 'application/vnd.ms-powerpoint' : 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+          const blob = new Blob([arrayBuffer], { type: contentType });
+          const url = URL.createObjectURL(blob);
+          setBlobUrl(url);
         } else if (isImage || isVideo || isAudio || isPdf) {
           const contentType = mime || (isPdf ? 'application/pdf' : 'application/octet-stream');
           const blob = new Blob([arrayBuffer], { type: contentType });
@@ -224,8 +255,10 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
         } else if (isText) {
           const text = new TextDecoder('utf-8').decode(arrayBuffer);
           setTextContent(text);
+        } else {
+          const blob = new Blob([arrayBuffer]);
+          setBlobUrl(URL.createObjectURL(blob));
         }
-      }
     } catch (err: any) {
       const code = err.response?.data?.code;
       const isProtected = err.response?.data?.isProtected;
@@ -280,11 +313,23 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   };
 
   const handleDownloadAction = () => {
+    if (onDownload) {
+      onDownload(file, unlockedPassword || undefined);
+      return;
+    }
+
+    let downloadName = file.fileName || file.name || 'document';
+    if (ext && !downloadName.toLowerCase().endsWith('.' + ext.toLowerCase())) {
+      downloadName = `${downloadName}.${ext}`;
+    }
+
     if (blobUrl) {
       const a = document.createElement('a');
       a.href = blobUrl;
-      a.download = file.fileName || file.name || 'document';
+      a.download = downloadName;
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       return;
     }
 
@@ -295,21 +340,27 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = file.fileName || file.name || 'document.docx';
+      a.download = downloadName.endsWith('.docx') ? downloadName : `${downloadName}.docx`;
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       URL.revokeObjectURL(url);
       return;
     }
 
-    if (onDownload) {
-      onDownload(file, unlockedPassword);
-    } else {
-      let downloadUrl = '/api/files/' + file.id + '/download';
-      if (unlockedPassword) {
-        downloadUrl += '?password=' + encodeURIComponent(unlockedPassword);
-      }
-      window.open(downloadUrl, '_blank');
+    const endpoint = (file.documentCode || file.document_code || file.isDocument)
+      ? `/api/documents/${file.id}/download`
+      : `/api/files/${file.id}/download`;
+    let downloadUrl = endpoint;
+    if (unlockedPassword) {
+      downloadUrl += '?password=' + encodeURIComponent(unlockedPassword);
     }
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = downloadName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   const handlePrintAction = async () => {
@@ -551,6 +602,38 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
           ) : textContent ? (
             <div className="w-full h-full bg-white rounded-lg p-6 overflow-auto text-xs font-mono text-slate-800 leading-relaxed">
               <pre className="whitespace-pre-wrap">{textContent}</pre>
+            </div>
+          ) : isPpt ? (
+            /* Dedicated PowerPoint Presentation Card */
+            <div className="flex flex-col items-center justify-center p-8 sm:p-12 max-w-lg w-full mx-auto bg-white rounded-3xl shadow-2xl text-center border border-amber-200">
+              <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-300 flex items-center justify-center text-amber-600 mb-5 shadow-xs">
+                <Presentation className="w-10 h-10" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 mb-1.5 max-w-md truncate" title={file.fileName || file.name}>
+                {file.fileName || file.name}
+              </h3>
+              <div className="flex items-center gap-2 mb-4 flex-wrap justify-center">
+                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
+                  Microsoft PowerPoint (.{ext ? ext.toUpperCase() : 'PPTX'})
+                </span>
+                {file.size && (
+                  <span className="text-[11px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                    {file.size}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mb-6 leading-relaxed max-w-md">
+                Tài liệu bài giảng/thuyết trình PowerPoint sẵn sàng trình chiếu. Trình duyệt không hỗ trợ trực tiếp các animation động của PowerPoint. Hãy bấm tải về để mở trong Microsoft PowerPoint, Keynote hoặc WPS Office.
+              </p>
+              <div className="flex items-center gap-3 w-full justify-center">
+                <button
+                  onClick={handleDownloadAction}
+                  className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Tải bản trình chiếu (.{(ext || 'pptx').toUpperCase()})</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="text-center p-8 bg-white rounded-2xl max-w-md shadow-lg">

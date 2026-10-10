@@ -26,13 +26,15 @@ interface CreateDocumentModalProps {
   onClose: () => void;
   onSuccess: () => void;
   initialFolderId?: number | string | null;
+  initialDepartmentId?: number | string | null;
 }
 
 export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  initialFolderId
+  initialFolderId,
+  initialDepartmentId
 }) => {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,7 +44,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   const [folderId, setFolderId] = useState<number | ''>(initialFolderId ? Number(initialFolderId) : '');
   const [folders, setFolders] = useState<any[]>([]);
   const [documentTypeId, setDocumentTypeId] = useState<number | ''>('');
-  const [departmentId, setDepartmentId] = useState<number | ''>('');
+  const [departmentId, setDepartmentId] = useState<number | ''>(initialDepartmentId ? Number(initialDepartmentId) : '');
   const [contractNumber, setContractNumber] = useState('');
   const [partnerName, setPartnerName] = useState('');
   const [publishedDate, setPublishedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -97,8 +99,11 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       }).catch(() => {});
 
       setFolderId(initialFolderId ? Number(initialFolderId) : '');
+      if (initialDepartmentId) {
+        setDepartmentId(Number(initialDepartmentId));
+      }
     }
-  }, [isOpen, initialFolderId]);
+  }, [isOpen, initialFolderId, initialDepartmentId]);
 
   // Tự động sinh tên file chuẩn theo quy tắc: [Ngày/Năm]_[Loại_Tài_Liệu]_[Tên_Đối_Tác/Nội_Dung]_[Phiên_Bản]
   useEffect(() => {

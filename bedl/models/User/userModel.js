@@ -9,7 +9,7 @@ class UserModel {
             `
             SELECT 
                 u.id, u.username, u.password_hash, u.email, u.full_name,
-                u.is_active, u.status, r.code AS role_code
+                u.is_active, u.status, u.department_id, r.code AS role_code
             FROM users u
             JOIN user_role ur ON ur.user_id = u.id
             JOIN roles r ON r.id = ur.role_id
@@ -25,7 +25,7 @@ class UserModel {
             `
             SELECT 
                 u.id, u.username, u.password_hash, u.email, u.full_name,
-                u.is_active, u.status, r.code AS role_code
+                u.is_active, u.status, u.department_id, r.code AS role_code
             FROM users u
             LEFT JOIN user_role ur ON ur.user_id = u.id
             LEFT JOIN roles r ON r.id = ur.role_id

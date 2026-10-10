@@ -131,7 +131,7 @@ const DepartmentModel = {
     getDocuments: async (departmentId) => {
         try {
             const [rows] = await db.query(
-                `SELECT d.id, d.document_code, d.name, d.description, d.file_name, 
+                `SELECT d.id, d.document_code, d.name, d.description, d.file_name, d.file_path,
                         d.file_size, d.file_type, d.mime_type, d.version, d.access_level,
                         d.status, d.security_level, d.created_at, d.updated_at, d.folder_id,
                         d.access_password_hash IS NOT NULL as has_password,

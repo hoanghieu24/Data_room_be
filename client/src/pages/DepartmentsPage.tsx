@@ -52,6 +52,8 @@ export const DepartmentsPage: React.FC = () => {
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [docSearch, setDocSearch] = useState('');
   const [previewFile, setPreviewFile] = useState<any | null>(null);
+  const [uploadingDeptDoc, setUploadingDeptDoc] = useState(false);
+  const deptFileInputRef = React.useRef<HTMLInputElement>(null);
 
   const fetchDepartments = async () => {
     setLoading(true);
@@ -168,21 +170,81 @@ export const DepartmentsPage: React.FC = () => {
     }
   };
 
+  const handleUploadToDepartment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !viewingDocsDept) return;
+
+    setUploadingDeptDoc(true);
+    let successCount = 0;
+    try {
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('name', file.name.replace(/\.[^/.]+$/, ''));
+        formData.append('department_id', String(viewingDocsDept.id));
+        try {
+          const res = await api.post('/documents', formData);
+          if (res.data.success) successCount++;
+        } catch (err: any) {
+          console.error('Lỗi khi tải file cho phòng ban:', err);
+        }
+      }
+
+      if (successCount > 0) {
+        toast('success', `Đã tải lên thành công ${successCount} tài liệu cho phòng ban!`);
+        // Refresh danh sách tài liệu phòng ban
+        const res = await api.get(`/departments/${viewingDocsDept.id}/documents`);
+        if (res.data.success) {
+          setDepartmentDocs(res.data.documents || []);
+        }
+      } else {
+        toast('error', 'Tải tài liệu thất bại');
+      }
+    } finally {
+      setUploadingDeptDoc(false);
+      if (deptFileInputRef.current) deptFileInputRef.current.value = '';
+    }
+  };
+
   const handleDownloadDoc = async (doc: any) => {
     try {
-      const res = await api.get(`/documents/${doc.id}/download`, {
+      let passwordParam = '';
+      if (doc.has_password || doc.hasPassword) {
+        const pass = window.prompt(`Tài liệu "${doc.name}" được bảo vệ bằng mật mã. Vui lòng nhập mật mã để tải về:`);
+        if (!pass) return;
+        passwordParam = `?password=${encodeURIComponent(pass)}`;
+      }
+
+      const res = await api.get(`/documents/${doc.id}/download${passwordParam}`, {
         responseType: 'blob'
       });
+
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', doc.fileName || doc.file_name || doc.name);
+      let downloadName = doc.fileName || doc.file_name || doc.name;
+      const ext = doc.fileType || doc.file_type || (doc.file_name?.split('.').pop() || '');
+      if (ext && !downloadName.toLowerCase().endsWith('.' + ext.toLowerCase())) {
+        downloadName = `${downloadName}.${ext}`;
+      }
+      link.setAttribute('download', downloadName);
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.URL.revokeObjectURL(url);
       toast('success', `Đã tải tài liệu "${doc.name}"`);
     } catch (err: any) {
-      toast('error', 'Không thể tải tài liệu về');
+      let errorMsg = 'Không thể tải tài liệu về';
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          if (json.message) errorMsg = json.message;
+        } catch (_) {}
+      } else if (err.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      }
+      toast('error', errorMsg);
     }
   };
 
@@ -498,6 +560,31 @@ export const DepartmentsPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  ref={deptFileInputRef}
+                  multiple
+                  onChange={handleUploadToDepartment}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => deptFileInputRef.current?.click()}
+                  disabled={uploadingDeptDoc}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  title="Chọn tệp tin tải lên trực tiếp cho phòng ban này"
+                >
+                  {uploadingDeptDoc ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Đang tải lên...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Tải lên tệp</span>
+                    </>
+                  )}
+                </button>
                 <button
                   onClick={() => {
                     navigate(`/documents?department_id=${viewingDocsDept.id}`);
@@ -506,7 +593,7 @@ export const DepartmentsPage: React.FC = () => {
                   title="Mở trong Kho tài liệu để quản lý chi tiết"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Mở trong Kho tài liệu</span>
+                  <span>Kho tài liệu</span>
                 </button>
                 <button
                   onClick={() => setViewingDocsDept(null)}
@@ -556,13 +643,22 @@ export const DepartmentsPage: React.FC = () => {
                       Phòng ban "{viewingDocsDept.name}" hiện chưa được gán tài liệu nào.
                     </p>
                   </div>
-                  <button
-                    onClick={() => navigate(`/documents?department_id=${viewingDocsDept.id}`)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Tải tài liệu lên cho phòng ban này</span>
-                  </button>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => deptFileInputRef.current?.click()}
+                      disabled={uploadingDeptDoc}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-xs disabled:opacity-50"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Chọn tệp tải lên ngay</span>
+                    </button>
+                    <button
+                      onClick={() => navigate(`/documents?department_id=${viewingDocsDept.id}`)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                    >
+                      <span>Mở Kho tài liệu</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
                 (() => {
@@ -627,9 +723,11 @@ export const DepartmentsPage: React.FC = () => {
                               id: doc.id,
                               name: doc.name,
                               fileName: doc.file_name || doc.name,
+                              fileType: doc.file_type || (doc.file_name?.split('.').pop() || ''),
                               extension: doc.file_type || (doc.file_name?.split('.').pop() || ''),
                               url: `/api/documents/${doc.id}/file`,
                               previewUrl: `/api/documents/${doc.id}/file`,
+                              isDocument: true,
                               hasPassword: doc.has_password
                             });
                           }}
